@@ -63,7 +63,7 @@ export default function Login() {
             <LogoMark size={44} bg={s.logoTile.backgroundColor} />
           </View>
           <RNText style={s.wordmark}>Sewain</RNText>
-          <RNText style={s.tagline}>AI admin buat bisnis sewa properti.</RNText>
+          <RNText style={s.tagline}>Admin buat bisnis sewa properti.</RNText>
           <RNText style={s.sub}>Unit banyak. Admin nggak harus ikut banyak.</RNText>
         </View>
 
@@ -137,7 +137,7 @@ export default function Login() {
           style={{ marginHorizontal: spacing.xl }}
         />
         <RNText style={s.demoNote}>
-          Masuk tanpa daftar, lengkap dengan data contoh 12 unit properti.
+          Masuk tanpa daftar, lengkap dengan data contoh 12 unit. Akun demo dihapus otomatis setelah 7 hari.
         </RNText>
       </KeyboardAwareScrollView>
     </View>

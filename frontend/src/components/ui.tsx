@@ -160,10 +160,7 @@ export function Chip({
     <Pressable
       testID={testID}
       onPress={onPress}
-      style={[
-        s.chip,
-        active && { backgroundColor: s.chipActive.bg, borderColor: s.chipActive.border },
-      ]}
+      style={[s.chip, active && s.chipActive]}
     >
       <RNText style={[s.chipText, active && s.chipTextActive]} numberOfLines={1}>
         {label}
@@ -179,7 +176,7 @@ export function ChipRow({ children, testID }: { children: React.ReactNode; testI
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={s.chipRow}
-      style={{ flexGrow: 0 }}
+      style={{ flexGrow: 0, flexShrink: 0 }}
       testID={testID}
     >
       {children}
@@ -342,7 +339,7 @@ const useStyles = makeStyles((colors) => ({
     alignItems: "center",
     flexShrink: 0,
   },
-  chipActive: { bg: colors.brandPrimary, border: colors.brandPrimary },
+  chipActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   chipText: { color: colors.onSurfaceSecondary, fontFamily: fonts.medium, fontSize: 13 },
   chipTextActive: { color: colors.onBrandPrimary, fontFamily: fonts.semibold },
   chipRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.xs, alignItems: "center" },

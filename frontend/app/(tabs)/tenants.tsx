@@ -10,7 +10,8 @@ import { Sheet } from "@/src/components/Sheet";
 import { Button, Card, Chip, EmptyState, ErrorBox, Field, Input, Spinner, StatusPill } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
-import { dayLabel, rupiah, todayISO } from "@/src/lib/format";
+import { dayLabel, leaseLeftLabel, moneyInput, parseMoney, rupiah, todayISO } from "@/src/lib/format";
+import { DateInput } from "@/src/components/DateInput";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 export default function TenantsScreen() {
@@ -21,13 +22,14 @@ export default function TenantsScreen() {
   const insets = useSafeAreaInsets();
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const [addOpen, setAddOpen] = useState(false);
-  const [f, setF] = useState({ name: "", unit_id: "", phone: "", start_date: todayISO(), monthly_rent: "", deposit: "", due_day: "10" });
+  const [f, setF] = useState({ name: "", unit_id: "", phone: "", start_date: todayISO(), months: 12, monthly_rent: "", deposit: "", due_day: "10" });
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["tenants"],
     queryFn: () => api<any[]>("/tenants"),
   });
-  const { data: units } = useQuery({ queryKey: ["units", "kosong"], queryFn: () => api<any[]>("/units?status=kosong"), enabled: addOpen });
+  const { data: allUnits } = useQuery({ queryKey: ["units", "semua"], queryFn: () => api<any[]>("/units?status=semua"), enabled: addOpen });
+  const units = (allUnits || []).filter((u) => u.status !== "terisi");
 
   const belum = (data || []).filter((t) => t.payment_status === "belum_bayar");
   const belumTotal = belum.reduce((a, t) => a + (t.next_amount || 0), 0);
@@ -38,11 +40,12 @@ export default function TenantsScreen() {
         method: "POST",
         body: {
           name: f.name,
-          unit_id: f.unit_id || units?.[0]?.id,
+          unit_id: f.unit_id,
           phone: f.phone || null,
           start_date: f.start_date,
-          monthly_rent: parseInt(f.monthly_rent.replace(/\D/g, "") || "0", 10),
-          deposit: parseInt(f.deposit.replace(/\D/g, "") || "0", 10),
+          contract_months: f.months,
+          monthly_rent: parseMoney(f.monthly_rent) ?? 0,
+          deposit: parseMoney(f.deposit) ?? 0,
           payment_due_day: parseInt(f.due_day || "10", 10) || 10,
         },
       }),
@@ -52,7 +55,7 @@ export default function TenantsScreen() {
       qc.invalidateQueries({ queryKey: ["today"] });
       toast("Tenant ditambahkan — unit jadi terisi ✓");
       setAddOpen(false);
-      setF({ ...f, name: "", phone: "", monthly_rent: "", deposit: "" });
+      setF({ ...f, name: "", unit_id: "", phone: "", monthly_rent: "", deposit: "" });
     },
     onError: (e: any) => toast(e?.message || "Gagal menambah tenant", "error"),
   });
@@ -103,7 +106,9 @@ export default function TenantsScreen() {
               <RNText style={s.due}>
                 {item.payment_status === "belum_bayar"
                   ? `Jatuh tempo ${dayLabel(item.next_due + "T00:00:00")}`
-                  : "Pembayaran bulan ini beres"}
+                  : "Tagihan beres"}
+                {" · "}
+                <RNText style={item.days_left != null && item.days_left <= 30 ? s.leaseSoon : undefined}>{leaseLeftLabel(item.days_left)}</RNText>
               </RNText>
             </Card>
           )}
@@ -120,14 +125,14 @@ export default function TenantsScreen() {
 
       <Sheet visible={addOpen} onClose={() => setAddOpen(false)} title="Tambah Tenant" testID="add-tenant-sheet" scroll>
         <View style={{ gap: spacing.md }}>
-          {(units?.length ?? 0) === 0 ? (
+          {allUnits && units.length === 0 ? (
             <ErrorBox message="Semua unit terisi. Kosongkan satu unit dulu (checkout) atau tambah unit baru." />
           ) : (
             <>
               <Field label="Properti / unit kosong">
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                  {(units || []).map((u: any) => (
-                    <Chip key={u.id} label={`${u.name} · ${u.property_name}`} active={f.unit_id === u.id} onPress={() => setF({ ...f, unit_id: u.id, monthly_rent: String(u.monthly_price) })} />
+                  {units.map((u: any) => (
+                    <Chip key={u.id} label={`${u.name} · ${u.property_name}`} active={f.unit_id === u.id} onPress={() => setF({ ...f, unit_id: u.id, monthly_rent: moneyInput(u.monthly_price), deposit: moneyInput(u.deposit) })} />
                   ))}
                 </View>
               </Field>
@@ -139,8 +144,8 @@ export default function TenantsScreen() {
               </Field>
               <View style={{ flexDirection: "row", gap: spacing.md }}>
                 <View style={{ flex: 1 }}>
-                  <Field label="Mulai (YYYY-MM-DD)">
-                    <Input testID="tenant-start-input" value={f.start_date} onChangeText={(v) => setF({ ...f, start_date: v })} placeholder={todayISO()} />
+                  <Field label="Mulai sewa">
+                    <DateInput testID="tenant-start-input" value={f.start_date} onChange={(v) => setF({ ...f, start_date: v })} />
                   </Field>
                 </View>
                 <View style={{ flex: 1 }}>
@@ -152,16 +157,23 @@ export default function TenantsScreen() {
               <View style={{ flexDirection: "row", gap: spacing.md }}>
                 <View style={{ flex: 1 }}>
                   <Field label="Sewa / bulan">
-                    <Input testID="tenant-rent-input" value={f.monthly_rent} onChangeText={(v) => setF({ ...f, monthly_rent: v })} placeholder="3200000" keyboardType="numeric" />
+                    <Input testID="tenant-rent-input" value={f.monthly_rent} onChangeText={(v) => setF({ ...f, monthly_rent: moneyInput(parseMoney(v)) })} placeholder="3.200.000" keyboardType="numeric" />
                   </Field>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Field label="Deposit">
-                    <Input testID="tenant-deposit-input" value={f.deposit} onChangeText={(v) => setF({ ...f, deposit: v })} placeholder="1200000" keyboardType="numeric" />
+                    <Input testID="tenant-deposit-input" value={f.deposit} onChangeText={(v) => setF({ ...f, deposit: moneyInput(parseMoney(v)) })} placeholder="1.200.000" keyboardType="numeric" />
                   </Field>
                 </View>
               </View>
-              <Button title="Simpan Tenant" onPress={() => create.mutate()} loading={create.isPending} testID="tenant-save-button" />
+              <Field label="Lama kontrak">
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  {[1, 3, 6, 12, 24].map((m) => (
+                    <Chip key={m} label={`${m} bulan`} active={f.months === m} onPress={() => setF({ ...f, months: m })} testID={`tenant-months-${m}`} />
+                  ))}
+                </View>
+              </Field>
+              <Button title="Simpan Tenant" onPress={() => create.mutate()} loading={create.isPending} disabled={!f.name.trim() || !f.unit_id} testID="tenant-save-button" />
             </>
           )}
         </View>
@@ -189,4 +201,5 @@ const useStyles = makeStyles((colors) => ({
   unpaidTitle: { color: colors.error, fontFamily: fonts.semibold, fontSize: 16 },
   unpaidSub: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 13, marginTop: 2 },
   unpaidBorder: { borderColor: "rgba(248,113,113,0.4)" },
+  leaseSoon: { color: colors.warning, fontFamily: fonts.medium },
 }));

@@ -11,6 +11,7 @@ import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Field, Input, Spinne
 import { UnitThumb } from "@/src/components/UnitThumb";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
+import { usePlan } from "@/src/lib/plan";
 import { UNIT_STATUS, daysFromNow, rupiah } from "@/src/lib/format";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -34,6 +35,8 @@ export default function UnitsScreen() {
   const params = useLocalSearchParams<{ status?: string }>();
   const [filter, setFilter] = useState(params.status || "semua");
   const [addOpen, setAddOpen] = useState(false);
+  const { plan, isFree, atUnitLimit, showUpgrade } = usePlan();
+  const openAdd = () => (atUnitLimit ? showUpgrade("limit_units") : setAddOpen(true));
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["units", filter],
@@ -42,7 +45,7 @@ export default function UnitsScreen() {
   const { data: properties } = useQuery({ queryKey: ["properties"], queryFn: () => api<any[]>("/properties") });
 
   // form
-  const [f, setF] = useState({ property_id: "", name: "", unit_type: "Studio", monthly_price: "", deposit: "", bedrooms: "1", bathrooms: "1", furnished: true, facilities: "", notes: "" });
+  const [f, setF] = useState({ property_id: "", name: "", unit_type: "Studio", monthly_price: "", deposit: "", bedrooms: "1", bathrooms: "1", furnished: true, facilities: "", notes: "", owner_name: "", owner_phone: "" });
 
   const createUnit = useMutation({
     mutationFn: () =>
@@ -59,17 +62,22 @@ export default function UnitsScreen() {
           furnished: f.furnished,
           facilities: f.facilities.split(",").map((x) => x.trim()).filter(Boolean),
           notes: f.notes || null,
+          owner_name: f.owner_name.trim() || null,
+          owner_phone: f.owner_phone.trim() || null,
         },
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["units"] });
       qc.invalidateQueries({ queryKey: ["today"] });
-      qc.invalidateQueries({ queryKey: ["impact"] });
+      qc.invalidateQueries({ queryKey: ["plan"] });
       toast("Unit ditambahkan ✓");
       setAddOpen(false);
       setF({ ...f, name: "", monthly_price: "", deposit: "", facilities: "", notes: "" });
     },
-    onError: (e: any) => toast(e?.message || "Gagal menambah unit", "error"),
+    onError: (e: any) => {
+      if (e?.code) setAddOpen(false);
+      else toast(e?.message || "Gagal menambah unit", "error");
+    },
   });
 
   const empty = !isLoading && data && data.length === 0;
@@ -78,11 +86,21 @@ export default function UnitsScreen() {
     <View style={s.root}>
       <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
         <RNText style={s.title}>Unit</RNText>
-        <Pressable testID="add-unit-button" onPress={() => setAddOpen(true)} style={({ pressed }) => [s.addBtn, pressed && { opacity: 0.7 }]}>
+        <Pressable testID="add-unit-button" onPress={openAdd} style={({ pressed }) => [s.addBtn, pressed && { opacity: 0.7 }]}>
           <Icon name="plus" size={18} color={colors.onBrandPrimary} />
           <RNText style={s.addText}>Tambah</RNText>
         </Pressable>
       </View>
+
+      {isFree && plan ? (
+        <Pressable onPress={() => showUpgrade(plan.hidden_units > 0 ? "hidden_units" : "general")} testID="unit-usage">
+          <RNText style={s.usage}>
+            {plan.hidden_units > 0
+              ? `${plan.hidden_units} unit disembunyikan (paket Free) · Upgrade untuk menampilkan`
+              : `${plan.usage.units}/${plan.limits.max_units} unit · paket Free`}
+          </RNText>
+        </Pressable>
+      ) : null}
 
       <ChipRow testID="unit-filter-row">
         {STATUS_FILTERS.map((st) => (
@@ -132,7 +150,7 @@ export default function UnitsScreen() {
                 subtitle="Tambah unit manual, impor CSV, atau isi lewat halaman setup."
                 action={
                   <View style={{ flexDirection: "row", gap: 8 }}>
-                    <Button title="Tambah Unit" onPress={() => setAddOpen(true)} testID="empty-add-unit-button" />
+                    <Button title="Tambah Unit" onPress={openAdd} testID="empty-add-unit-button" />
                     <Button title="Halaman Setup" variant="ghost" onPress={() => router.push("/setup")} testID="empty-setup-button" />
                   </View>
                 }
@@ -145,7 +163,10 @@ export default function UnitsScreen() {
       <Sheet visible={addOpen} onClose={() => setAddOpen(false)} title="Tambah Unit" testID="add-unit-sheet" scroll>
         <View style={{ gap: spacing.md }}>
           {(properties?.length ?? 0) === 0 ? (
-            <ErrorBox message="Tambahkan properti dulu di halaman Setup, lalu kembali ke sini." />
+            <View style={{ gap: spacing.md }}>
+              <ErrorBox message="Tambahkan properti (gedung / kos / area) dulu, lalu kembali ke sini." />
+              <Button title="Tambah Properti" onPress={() => { setAddOpen(false); router.push("/setup"); }} testID="units-go-setup" />
+            </View>
           ) : (
             <>
               <Field label="Properti">
@@ -193,6 +214,18 @@ export default function UnitsScreen() {
                 <Input testID="unit-facilities-input" value={f.facilities} onChangeText={(v) => setF({ ...f, facilities: v })} placeholder="AC, WiFi, Kasur" />
               </Field>
               <SwitchRow label="Fully furnished" value={f.furnished} onChange={(v) => setF({ ...f, furnished: v })} testID="unit-furnished-switch" />
+              <View style={{ flexDirection: "row", gap: spacing.md }}>
+                <View style={{ flex: 1 }}>
+                  <Field label="Pemilik (opsional)">
+                    <Input testID="unit-owner-name-input" value={f.owner_name} onChangeText={(v) => setF({ ...f, owner_name: v })} placeholder="mis. Pak Hendra" />
+                  </Field>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Field label="HP pemilik">
+                    <Input testID="unit-owner-phone-input" value={f.owner_phone} onChangeText={(v) => setF({ ...f, owner_phone: v })} placeholder="0812…" keyboardType="phone-pad" />
+                  </Field>
+                </View>
+              </View>
               <Button title="Simpan Unit" onPress={() => createUnit.mutate()} loading={createUnit.isPending} testID="unit-save-button" />
             </>
           )}
@@ -222,4 +255,5 @@ const useStyles = makeStyles((colors) => ({
   price: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 15 },
   perMonth: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12 },
   vacant: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12 },
+  usage: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12, paddingHorizontal: spacing.lg, marginBottom: spacing.xs },
 }));

@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { router } from "expo-router";
 import { usePathname } from "expo-router";
-import { api, setAuthToken } from "./api";
+import { api, markAuthReady, setAuthToken } from "./api";
 import { storage } from "@/src/utils/storage";
+import { queryClient } from "@/src/query-client";
 
-export type User = { id: string; name: string; email: string; is_demo: boolean };
+export type User = { id: string; name: string; email: string; is_demo: boolean; plan: "free" | "premium" | "demo" };
 
 const TOKEN_KEY = "sewain_token";
+const USER_KEY = "sewain_user"; // last known profile, so the installed app still opens offline
 
 type AuthCtx = {
   user: User | null;
@@ -33,13 +35,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAuthToken(t);
         try {
           const u = await api<User>("/me");
+          await storage.setItem(USER_KEY, JSON.stringify(u));
           setUser(u);
           setToken(t);
-        } catch {
-          setAuthToken(null);
-          await storage.removeItem(TOKEN_KEY);
+        } catch (e: any) {
+          const cached = e?.status === 401 ? null : await storage.getItem(USER_KEY, null);
+          if (typeof cached === "string") {
+            // Offline or server waking up: keep the session instead of logging out.
+            setUser(JSON.parse(cached));
+            setToken(t);
+          } else {
+            setAuthToken(null);
+            await storage.removeItem(TOKEN_KEY);
+            await storage.removeItem(USER_KEY);
+          }
         }
       }
+      markAuthReady();
       setInit(true);
     })();
   }, []);
@@ -51,8 +63,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [init, user, pathname]);
 
   const apply = async (res: { token: string; user: User }) => {
+    queryClient.clear();
     setAuthToken(res.token);
     await storage.setItem(TOKEN_KEY, res.token);
+    await storage.setItem(USER_KEY, JSON.stringify(res.user));
     setUser(res.user);
     setToken(res.token);
     router.replace("/today");
@@ -80,10 +94,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    queryClient.clear();
     setAuthToken(null);
     setToken(null);
     setUser(null);
     await storage.removeItem(TOKEN_KEY);
+    await storage.removeItem(USER_KEY);
     router.replace("/");
   };
 

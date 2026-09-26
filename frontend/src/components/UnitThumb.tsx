@@ -3,16 +3,8 @@ import { View } from "react-native";
 import { Image } from "expo-image";
 import { Icon } from "./Icon";
 import { useAuth } from "@/src/lib/auth";
+import { photoUrl } from "@/src/lib/api";
 import { radius, useTheme } from "@/src/theme";
-
-const BASE = (process.env.EXPO_PUBLIC_BACKEND_URL ?? "").replace(/\/$/, "");
-
-function toUri(photo: string, token: string | null) {
-  if (!photo) return null;
-  if (photo.startsWith("http")) return { uri: photo };
-  // uploaded storage path -> authenticated backend route
-  return { uri: `${BASE}/api/files/${photo}?token=${token ?? ""}` };
-}
 
 export function UnitThumb({
   photo,
@@ -29,7 +21,7 @@ export function UnitThumb({
 }) {
   const { colors } = useTheme();
   const { token } = useAuth();
-  const src = photo ? toUri(photo, token) : null;
+  const src = photo ? { uri: photoUrl(photo, token) } : null;
   return (
     <View
       testID={testID}

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Linking, Platform, Pressable, ScrollView, Text as RNText, View } from "react-native";
+import { Linking, ScrollView, Text as RNText, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,12 +10,11 @@ import { ScreenHeader } from "@/src/components/ScreenHeader";
 import { Sheet } from "@/src/components/Sheet";
 import { Button, Card, Chip, EmptyState, ErrorBox, Field, Input, SectionTitle, Spinner, StatusPill, SwitchRow, Textarea } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
-import { api, uploadFile } from "@/src/lib/api";
+import { api, photoUrl, uploadFile } from "@/src/lib/api";
 import { useAuth } from "@/src/lib/auth";
-import { UNIT_STATUS, daysFromNow, rupiah } from "@/src/lib/format";
+import { waLink } from "@/src/lib/messages";
+import { UNIT_STATUS, dateLabel, daysFromNow, leaseLeftLabel, rupiah } from "@/src/lib/format";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-
-const BASE = (process.env.EXPO_PUBLIC_BACKEND_URL ?? "").replace(/\/$/, "");
 
 export default function UnitDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -54,10 +53,12 @@ export default function UnitDetail() {
     available_date: u.available_date || null,
     status: u.status,
     notes: u.notes || null,
+    owner_name: u.owner_name || null,
+    owner_phone: u.owner_phone || null,
   });
 
   const setStatus = useMutation({
-    mutationFn: (status: string) => api(`/units/${id}`, { method: "PUT", body: { ...buildBody(unit), status } }),
+    mutationFn: (status: string) => api(`/units/${id}`, { method: "PATCH", body: { status } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["unit", id] });
       qc.invalidateQueries({ queryKey: ["units"] });
@@ -68,7 +69,7 @@ export default function UnitDetail() {
   });
 
   const save = useMutation({
-    mutationFn: () => api(`/units/${id}`, { method: "PUT", body: { ...f } }),
+    mutationFn: () => api(`/units/${id}`, { method: "PATCH", body: { ...f } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["unit", id] });
       qc.invalidateQueries({ queryKey: ["units"] });
@@ -82,8 +83,13 @@ export default function UnitDetail() {
     mutationFn: () => api(`/units/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["units"] });
+      qc.invalidateQueries({ queryKey: ["plan"] });
       toast("Unit dihapus");
       router.back();
+    },
+    onError: (e: any) => {
+      setDeleteOpen(false);
+      toast(e?.message || "Gagal menghapus", "error");
     },
   });
 
@@ -98,7 +104,7 @@ export default function UnitDetail() {
       }
       return;
     }
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7 });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
     if (res.canceled || !res.assets?.[0]) return;
     const asset = res.assets[0];
     try {
@@ -130,13 +136,7 @@ export default function UnitDetail() {
             {unit.photos.map((p: string, i: number) => (
               <Image
                 key={i}
-                source={
-                  p.startsWith("http")
-                    ? { uri: p }
-                    : Platform.OS === "web"
-                    ? { uri: `${BASE}/api/files/${p}?token=${token}` }
-                    : { uri: `${BASE}/api/files/${p}`, headers: { Authorization: `Bearer ${token}` } }
-                }
+                source={{ uri: photoUrl(p, token) }}
                 style={{ width: 260, height: 165, borderRadius: radius.md, backgroundColor: colors.surfaceTertiary }}
                 contentFit="cover"
                 transition={200}
@@ -168,6 +168,33 @@ export default function UnitDetail() {
           ) : null}
           {unit.notes ? <RNText style={s.notes}>{unit.notes}</RNText> : null}
         </Card>
+
+        {unit.tenant ? (
+          <Card testID="unit-tenant-card" onPress={() => router.push(`/tenant/${unit.tenant.id}` as any)}>
+            <RNText style={s.rowLabel}>Tenant sekarang</RNText>
+            <RNText style={s.matchLeadName}>{unit.tenant.name}</RNText>
+            {unit.tenant.end_date ? (
+              <RNText style={s.matchLeadMeta}>
+                Kontrak sampai {dateLabel(unit.tenant.end_date + "T00:00:00")} · {leaseLeftLabel(unit.tenant.days_left)}
+              </RNText>
+            ) : null}
+          </Card>
+        ) : null}
+
+        {unit.owner_name || unit.owner_phone ? (
+          <Card testID="unit-owner-card">
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+              <View style={{ flex: 1 }}>
+                <RNText style={s.rowLabel}>Pemilik</RNText>
+                <RNText style={s.matchLeadName}>{unit.owner_name || "-"}</RNText>
+                {unit.owner_phone ? <RNText style={s.matchLeadMeta}>{unit.owner_phone}</RNText> : null}
+              </View>
+              {waLink(unit.owner_phone) ? (
+                <Button title="WhatsApp" variant="ghost" size="sm" icon="phone" onPress={() => Linking.openURL(waLink(unit.owner_phone)!)} testID="unit-owner-wa" />
+              ) : null}
+            </View>
+          </Card>
+        ) : null}
 
         <View style={{ gap: spacing.sm }}>
           <SectionTitle>Ubah status</SectionTitle>
@@ -217,7 +244,7 @@ export default function UnitDetail() {
             ))}
           </View>
         ) : (
-          <EmptyState icon="users" title="Belum ada calon yang cocok" subtitle="Coba analisis chat WhatsApp terbaru untuk menemukan calon penyewa baru." action={<Button title="Analisis Chat" onPress={() => { setMatchesOpen(false); router.push("/import-chat"); }} testID="matches-empty-analyze-button" />} />
+          <EmptyState icon="users" title="Belum ada calon yang cocok" subtitle="Calon penyewa aktif dengan budget & tipe yang pas akan muncul di sini." action={<Button title="Tambah Calon Penyewa" onPress={() => { setMatchesOpen(false); router.push("/lead/new" as any); }} testID="matches-empty-new-lead" />} />
         )}
       </Sheet>
 
@@ -249,13 +276,25 @@ export default function UnitDetail() {
               <Textarea testID="edit-unit-notes-input" value={f.notes || ""} onChangeText={(v: string) => setF({ ...f, notes: v })} />
             </Field>
             <SwitchRow label="Fully furnished" value={f.furnished} onChange={(v: boolean) => setF({ ...f, furnished: v })} testID="edit-unit-furnished-switch" />
+            <View style={{ flexDirection: "row", gap: spacing.md }}>
+              <View style={{ flex: 1 }}>
+                <Field label="Pemilik">
+                  <Input testID="edit-unit-owner-name" value={f.owner_name || ""} onChangeText={(v: string) => setF({ ...f, owner_name: v || null })} placeholder="Nama pemilik" />
+                </Field>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Field label="HP pemilik">
+                  <Input testID="edit-unit-owner-phone" value={f.owner_phone || ""} onChangeText={(v: string) => setF({ ...f, owner_phone: v || null })} placeholder="0812…" keyboardType="phone-pad" />
+                </Field>
+              </View>
+            </View>
             <Button title="Simpan" onPress={() => save.mutate()} loading={save.isPending} testID="edit-unit-save-button" />
           </View>
         ) : null}
       </Sheet>
 
       <Sheet visible={deleteOpen} onClose={() => setDeleteOpen(false)} title={`Hapus ${unit.name}?`} testID="unit-delete-sheet">
-        <RNText style={s.notes}>Unit diarsipkan (tidak terhapus permanen). Riwayat tenant & pembayaran tetap aman.</RNText>
+        <RNText style={s.notes}>Unit diarsipkan (tidak terhapus permanen). Riwayat tenant & pembayaran tetap aman. Unit dengan tenant aktif harus checkout dulu.</RNText>
         <Button title="Ya, Hapus" variant="danger" onPress={() => remove.mutate()} loading={remove.isPending} testID="unit-delete-confirm-button" style={{ marginTop: spacing.lg }} />
       </Sheet>
     </View>

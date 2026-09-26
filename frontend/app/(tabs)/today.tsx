@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
-import { Animated, Pressable, ScrollView, Text as RNText, View } from "react-native";
-import { FadeIn, FadeOut } from "react-native-reanimated";
+import { Platform, Pressable, ScrollView, Text as RNText, View, useWindowDimensions } from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { router } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,11 +9,13 @@ import { usesNativeTabs } from "@/src/navigation";
 import { Icon } from "@/src/components/Icon";
 import { LogoFull } from "@/src/components/Logo";
 import { Sheet } from "@/src/components/Sheet";
-import { FollowupSheet, ReminderSheet } from "@/src/components/ActionSheets";
-import { Button, Card, EmptyState, ErrorBox, SectionTitle, Spinner, StatusPill, Field, Input } from "@/src/components/ui";
+import { DateInput } from "@/src/components/DateInput";
+import { FollowupSheet, FollowupTarget, LeaseSheet, LeaseTarget, ReminderSheet, ReminderTarget } from "@/src/components/ActionSheets";
+import { Button, Card, EmptyState, ErrorBox, Field, SectionTitle, Spinner, StatusPill } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
-import { dateTimeLabel, greeting, relTime, rupiah, rupiahShort, todayISO } from "@/src/lib/format";
+import { usePlan } from "@/src/lib/plan";
+import { dateLabel, dateTimeLabel, greeting, leaseLeftLabel, rupiah, rupiahShort, todayISO } from "@/src/lib/format";
 import { fonts, makeStyles, radius, spacing, useTheme, withAlpha } from "@/src/theme";
 
 type QueueItem = any;
@@ -21,104 +23,93 @@ type TodayData = {
   name: string;
   is_demo: boolean;
   units: { total: number; terisi: number; kosong: number; reserved: number; maintenance: number };
-  counts: { followups: number; viewings: number; unpaid_amount: number; unpaid_count: number; urgent: number; total: number };
+  counts: { followups: number; viewings: number; unpaid_amount: number; unpaid_count: number; leases: number; issues: number; urgent: number; total: number };
   items: QueueItem[];
 };
+
+/** One calm sentence summarising the queue — computed locally, no AI call. */
+function summaryLine(c: TodayData["counts"]): string {
+  const parts = [
+    c.followups ? `${c.followups} follow-up` : null,
+    c.viewings ? `${c.viewings} viewing` : null,
+    c.unpaid_count ? `${c.unpaid_count} tagihan (${rupiahShort(c.unpaid_amount)})` : null,
+    c.leases ? `${c.leases} kontrak mau habis` : null,
+    c.issues ? `${c.issues} masalah${c.urgent ? ` (${c.urgent} urgent)` : ""}` : null,
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
 
 export default function TodayScreen() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { colors } = useTheme();
+  const { plan, showUpgrade } = usePlan();
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
+  const { width } = useWindowDimensions();
+  const hasSidebar = Platform.OS === "web" && width >= 1024; // desktop: logo + settings live in the sidebar
   const scrollRef = useRef<ScrollView>(null);
   const queueY = useRef(0);
-  const [followupLead, setFollowupLead] = useState<any>(null);
-  const [remindPayment, setRemindPayment] = useState<any>(null);
+  const [followupLead, setFollowupLead] = useState<FollowupTarget | null>(null);
+  const [remindPayment, setRemindPayment] = useState<ReminderTarget | null>(null);
+  const [lease, setLease] = useState<LeaseTarget | null>(null);
   const [reschedule, setReschedule] = useState<any>(null);
   const [reschedDate, setReschedDate] = useState(todayISO(1));
-  const [reschedTime, setReschedTime] = useState("14.00");
+  const [reschedTime, setReschedTime] = useState("14:00");
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["today"],
     queryFn: () => api<TodayData>("/today"),
   });
-  const { data: summaryData } = useQuery({
-    queryKey: ["today-summary"],
-    queryFn: () => api<{ summary: string }>("/today/summary"),
-    staleTime: 1000 * 60 * 10,
-  });
 
   const invalidateAll = () => {
-    qc.invalidateQueries({ queryKey: ["today"] });
-    qc.invalidateQueries({ queryKey: ["leads"] });
-    qc.invalidateQueries({ queryKey: ["tenants"] });
-    qc.invalidateQueries({ queryKey: ["maintenance"] });
-    qc.invalidateQueries({ queryKey: ["units"] });
-    qc.invalidateQueries({ queryKey: ["impact"] });
+    for (const key of ["today", "leads", "lead", "tenants", "maintenance", "units", "plan"]) qc.invalidateQueries({ queryKey: [key] });
   };
 
-  const confirmViewing = useMutation({
-    mutationFn: (id: string) => api(`/viewings/${id}/confirm`, { method: "POST" }),
-    onSuccess: () => {
-      invalidateAll();
-      toast("Viewing dikonfirmasi ✓");
-    },
-    onError: (e: any) => toast(e?.message || "Gagal konfirmasi", "error"),
-  });
-  const cancelViewing = useMutation({
-    mutationFn: (id: string) => api(`/viewings/${id}/cancel`, { method: "POST" }),
-    onSuccess: () => {
-      invalidateAll();
-      toast("Viewing dibatalkan");
-    },
-    onError: (e: any) => toast(e?.message || "Gagal membatalkan", "error"),
-  });
+  const act = (fn: (v: any) => Promise<any>, ok: string) =>
+    ({
+      mutationFn: fn,
+      onSuccess: () => {
+        invalidateAll();
+        if (ok) toast(ok);
+      },
+      onError: (e: any) => toast(e?.message || "Gagal. Coba lagi.", "error"),
+    });
+
+  const confirmViewing = useMutation(act((id: string) => api(`/viewings/${id}/confirm`, { method: "POST" }), "Viewing dikonfirmasi ✓"));
+  const cancelViewing = useMutation(act((id: string) => api(`/viewings/${id}/cancel`, { method: "POST" }), "Viewing dibatalkan"));
+  const viewingNotYet = useMutation(
+    act((id: string) => api(`/viewings/${id}/complete`, { method: "POST", body: { next: "followup" } }), "Dicatat — follow-up lagi 3 hari ke depan"),
+  );
   const reschedMutation = useMutation({
-    mutationFn: (v: { id: string; date: string; time: string }) =>
-      api(`/viewings/${v.id}/reschedule`, {
-        method: "POST",
-        body: { scheduled_at: `${v.date}T${v.time.replace(".", ":")}:00` },
-      }),
-    onSuccess: () => {
+    ...act((v: { id: string; date: string; time: string }) =>
+      api(`/viewings/${v.id}/reschedule`, { method: "POST", body: { scheduled_at: `${v.date}T${v.time}:00` } }), "Jadwal viewing diganti"),
+    onSettled: () => setReschedule(null),
+  });
+  const markPaid = useMutation(act((id: string) => api(`/payments/${id}/mark-paid`, { method: "POST" }), "Lunas ✓"));
+  const startMaint = useMutation(act((id: string) => api(`/maintenance/${id}/start`, { method: "POST" }), ""));
+  const resolveMaint = useMutation(act((id: string) => api(`/maintenance/${id}/resolve`, { method: "POST" }), "Masalah ditandai selesai ✓"));
+
+  const toNegotiation = async (item: QueueItem) => {
+    try {
+      await api(`/viewings/${item.viewing_id}/complete`, { method: "POST", body: { next: "negotiation" } });
       invalidateAll();
-      setReschedule(null);
-      toast("Jadwal viewing diganti");
-    },
-    onError: (e: any) => toast(e?.message || "Gagal ganti jadwal", "error"),
-  });
-  const markPaid = useMutation({
-    mutationFn: (id: string) => api(`/payments/${id}/mark-paid`, { method: "POST" }),
-    onSuccess: () => {
-      invalidateAll();
-      toast("Lunas ✓");
-    },
-    onError: (e: any) => toast(e?.message || "Gagal menandai lunas", "error"),
-  });
-  const startMaint = useMutation({
-    mutationFn: (id: string) => api(`/maintenance/${id}/start`, { method: "POST" }),
-    onSuccess: invalidateAll,
-  });
-  const resolveMaint = useMutation({
-    mutationFn: (id: string) => api(`/maintenance/${id}/resolve`, { method: "POST" }),
-    onSuccess: () => {
-      invalidateAll();
-      toast("Masalah ditandai selesai ✓");
-    },
-    onError: (e: any) => toast(e?.message || "Gagal menandai selesai", "error"),
-  });
+      router.push(`/lead/${item.lead_id}?open=negotiation` as any);
+    } catch (e: any) {
+      toast(e?.message || "Gagal. Coba lagi.", "error");
+    }
+  };
 
   if (isLoading) return <Spinner label="Menyiapkan hari ini…" />;
   if (error || !data) return <View style={s.page}><ErrorBox message={(error as any)?.message || "Gagal memuat."} onRetry={refetch} /></View>;
 
   const { counts, units, items } = data;
-
   const statCards = [
-    { v: `${counts.followups}`, l: "Calon penyewa perlu di-follow-up", to: "/leads", testID: "stat-followups" },
-    { v: `${counts.viewings}`, l: "Viewing perlu dikonfirmasi", to: "/leads", testID: "stat-viewings" },
-    { v: rupiahShort(counts.unpaid_amount), l: "Pembayaran belum masuk", to: "/tenants", testID: "stat-unpaid" },
-    { v: `${counts.urgent}`, l: "Komplain urgent", to: "/maintenance", testID: "stat-urgent" },
+    { v: `${counts.followups}`, l: "Perlu di-follow-up", to: "/leads", testID: "stat-followups" },
+    { v: `${counts.viewings}`, l: "Viewing", to: "/leads", testID: "stat-viewings" },
+    { v: rupiahShort(counts.unpaid_amount), l: "Tagihan belum masuk", to: "/tenants", testID: "stat-unpaid" },
+    { v: `${counts.leases}`, l: "Kontrak habis ≤ 30 hari", to: "/tenants", testID: "stat-leases" },
   ];
 
   return (
@@ -129,21 +120,16 @@ export default function TodayScreen() {
         showsVerticalScrollIndicator={false}
         testID="today-screen"
       >
-        {/* sticky header */}
-        <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
-          <LogoFull size={22} bg={colors.surface} />
-          <View style={{ flexDirection: "row", gap: 2 }}>
-            {[
-              { icon: "chat" as const, to: "/tanya", tid: "header-tanya-button" },
-              { icon: "chart" as const, to: "/impact", tid: "header-impact-button" },
-              { icon: "sliders" as const, to: "/settings", tid: "header-settings-button" },
-            ].map((b) => (
-              <Pressable key={b.tid} testID={b.tid} onPress={() => router.push(b.to as any)} style={s.iconBtn}>
-                <Icon name={b.icon} size={20} color={colors.onSurfaceSecondary} />
-              </Pressable>
-            ))}
+        {hasSidebar ? (
+          <View style={{ height: spacing.xl }} />
+        ) : (
+          <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
+            <LogoFull size={22} bg={colors.surface} />
+            <Pressable testID="header-settings-button" onPress={() => router.push("/settings")} style={s.iconBtn} accessibilityLabel="Pengaturan">
+              <Icon name="sliders" size={20} color={colors.onSurfaceSecondary} />
+            </Pressable>
           </View>
-        </View>
+        )}
 
         <View style={s.content}>
           <RNText style={s.greeting}>
@@ -152,13 +138,25 @@ export default function TodayScreen() {
           <RNText style={s.headline}>
             {counts.total > 0 ? `Ada ${counts.total} hal yang perlu diberesin.` : "Semua beres hari ini."}
           </RNText>
-          {summaryData?.summary ? <RNText style={s.summary}>{summaryData.summary}</RNText> : null}
+          {counts.total > 0 ? <RNText style={s.summary}>{summaryLine(counts)}</RNText> : null}
+
+          {plan && plan.hidden_units > 0 ? (
+            <Pressable testID="hidden-units-banner" onPress={() => showUpgrade("hidden_units")} style={({ pressed }) => [s.banner, pressed && { opacity: 0.8 }]}>
+              <Icon name="alert" size={16} color={colors.warning} />
+              <RNText style={s.bannerText}>
+                {plan.hidden_units} unit disembunyikan karena paket Free. Upgrade untuk menampilkannya lagi.
+              </RNText>
+            </Pressable>
+          ) : null}
 
           {units.total === 0 ? (
             <Card style={{ marginTop: spacing.lg }}>
               <RNText style={s.setupTitle}>Mulai dari unit pertamamu</RNText>
-              <RNText style={s.setupSub}>Tambah properti & unit, atau biar Sewain baca chat WhatsApp kamu.</RNText>
-              <Button title="Isi Unit & Properti" onPress={() => router.push("/setup")} testID="today-setup-button" style={{ marginTop: spacing.md }} />
+              <RNText style={s.setupSub}>Catat unit yang kamu pasarkan, lalu calon penyewanya. Sewain yang ingatkan siapa harus di-follow-up.</RNText>
+              <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md, flexWrap: "wrap" }}>
+                <Button title="Tambah Unit" onPress={() => router.push("/setup")} testID="today-setup-button" />
+                <Button title="Tambah Calon Penyewa" variant="ghost" onPress={() => router.push("/lead/new" as any)} testID="today-new-lead-button" />
+              </View>
             </Card>
           ) : (
             <>
@@ -171,7 +169,7 @@ export default function TodayScreen() {
                 ))}
               </View>
 
-              {counts.total > 0 ? (
+              {counts.total > 2 ? (
                 <Button title="Beresin satu-satu" onPress={() => scrollRef.current?.scrollTo({ y: queueY.current - 8, animated: true })} testID="beresin-button" style={{ marginTop: spacing.md }} />
               ) : null}
 
@@ -204,20 +202,20 @@ export default function TodayScreen() {
                       <View style={{ flex: 1, gap: 2 }}>
                         <RNText style={s.itemTitle}>{item.name}</RNText>
                         <RNText style={s.itemSub}>
-                          {item.subtitle}
-                          {item.last_interaction_at ? ` · chat terakhir ${relTime(item.last_interaction_at)}` : ""}
+                          {[item.unit_type, item.budget_max ? `Budget ${rupiahShort(item.budget_max)}` : null].filter(Boolean).join(" · ") || "Calon penyewa"}
                         </RNText>
                       </View>
-                      <StatusPill label="Perlu follow-up" tone="warning" testID={`pill-followup-${item.id}`} />
+                      <StatusPill label={item.status === "negotiation" ? "Negosiasi" : "Follow-up"} tone="warning" testID={`pill-followup-${item.id}`} />
                     </View>
-                    {item.ai_note ? <RNText style={s.aiNote}>“{item.ai_note}”</RNText> : null}
+                    <RNText style={s.reason}>{item.reason}</RNText>
+                    {item.note ? <RNText style={s.note} numberOfLines={2}>{item.note}</RNText> : null}
                     {item.unit ? (
                       <RNText style={s.matchLine}>
                         Cocok: <RNText style={s.matchUnit}>{item.unit.name}</RNText> · {item.unit.unit_type} · {rupiahShort(item.unit.monthly_price)}/bln
                       </RNText>
                     ) : null}
                     <View style={s.actions}>
-                      <Button title="Follow-up" size="sm" onPress={() => setFollowupLead({ id: item.lead_id, name: item.name, suggested_followup: item.suggested_followup, phone: item.phone })} testID={`followup-open-${item.id}`} />
+                      <Button title="Follow-up" size="sm" icon="send" onPress={() => setFollowupLead({ ...item, id: item.lead_id })} testID={`followup-open-${item.id}`} />
                       <Button title="Detail" variant="ghost" size="sm" onPress={() => router.push(`/lead/${item.lead_id}` as any)} testID={`followup-detail-${item.id}`} />
                     </View>
                   </Card>
@@ -227,17 +225,29 @@ export default function TodayScreen() {
                   <Card testID={`queue-viewing-${item.id}`}>
                     <View style={s.cardHead}>
                       <View style={{ flex: 1, gap: 2 }}>
-                        <RNText style={s.itemTitle}>{item.name}</RNText>
+                        <RNText style={s.itemTitle}>Viewing {item.name}</RNText>
                         <RNText style={s.itemSub}>Unit {item.unit_name} · {dateTimeLabel(item.scheduled_at)}</RNText>
                       </View>
-                      <StatusPill label={item.status === "menunggu" ? "Menunggu konfirmasi" : "Terjadwal"} tone={item.status === "menunggu" ? "warning" : "info"} testID={`pill-viewing-${item.id}`} />
+                      <StatusPill label={item.status === "menunggu" ? "Belum dikonfirmasi" : "Terjadwal"} tone={item.status === "menunggu" ? "warning" : "info"} testID={`pill-viewing-${item.id}`} />
                     </View>
                     <View style={s.actions}>
                       {item.status === "menunggu" ? (
                         <Button title="Konfirmasi" size="sm" onPress={() => confirmViewing.mutate(item.viewing_id)} testID={`viewing-confirm-${item.id}`} />
                       ) : null}
-                      <Button title="Ganti Jadwal" variant="ghost" size="sm" onPress={() => { setReschedule(item); setReschedDate(todayISO(1)); setReschedTime("14.00"); }} testID={`viewing-reschedule-${item.id}`} />
+                      <Button title="Ganti Jadwal" variant="ghost" size="sm" onPress={() => { setReschedule(item); setReschedDate(todayISO(1)); setReschedTime("14:00"); }} testID={`viewing-reschedule-${item.id}`} />
                       <Button title="Batal" variant="ghost" size="sm" onPress={() => cancelViewing.mutate(item.viewing_id)} testID={`viewing-cancel-${item.id}`} />
+                    </View>
+                  </Card>
+                ) : null}
+
+                {item.type === "viewing_result" ? (
+                  <Card testID={`queue-viewing-result-${item.id}`} style={{ borderColor: withAlpha(colors.info, 0.4) }}>
+                    <RNText style={s.itemTitle}>Gimana hasil viewing {item.name}?</RNText>
+                    <RNText style={s.itemSub}>Unit {item.unit_name} · {dateTimeLabel(item.scheduled_at)}</RNText>
+                    <View style={s.actions}>
+                      <Button title="Lanjut Negosiasi" size="sm" onPress={() => toNegotiation(item)} testID={`viewing-nego-${item.id}`} />
+                      <Button title="Belum cocok" variant="ghost" size="sm" onPress={() => viewingNotYet.mutate(item.viewing_id)} testID={`viewing-notyet-${item.id}`} />
+                      <Button title="Detail" variant="ghost" size="sm" onPress={() => router.push(`/lead/${item.lead_id}` as any)} testID={`viewing-detail-${item.id}`} />
                     </View>
                   </Card>
                 ) : null}
@@ -248,15 +258,30 @@ export default function TodayScreen() {
                       <View style={{ flex: 1, gap: 2 }}>
                         <RNText style={s.itemTitle}>{item.name} · {item.unit_name}</RNText>
                         <RNText style={s.itemSub}>
-                          {rupiah(item.amount)} · jatuh tempo {item.due_date ? new Date(item.due_date + "T00:00:00").getDate() + " " + new Date(item.due_date + "T00:00:00").toLocaleDateString("id-ID", { month: "long" }) : "-"}
-                          {item.days_late > 0 ? ` · terlambat ${item.days_late} hari` : ""}
+                          {rupiah(item.amount)} · jatuh tempo {dateLabel(item.due_date + "T00:00:00")}
                         </RNText>
                       </View>
-                      <StatusPill label={item.days_late > 0 ? "TERLAMBAT" : "BELUM BAYAR"} tone="error" testID={`pill-payment-${item.id}`} />
+                      <StatusPill label={item.days_late > 0 ? `TELAT ${item.days_late} HARI` : "BELUM BAYAR"} tone="error" testID={`pill-payment-${item.id}`} />
                     </View>
                     <View style={s.actions}>
                       <Button title="Tandai Lunas" size="sm" onPress={() => markPaid.mutate(item.payment_id)} testID={`payment-paid-${item.id}`} />
-                      <Button title="Ingatkan" variant="ghost" size="sm" onPress={() => setRemindPayment({ id: item.payment_id, name: item.name, unit_name: item.unit_name, amount: item.amount, due_date: item.due_date, phone: item.phone })} testID={`payment-remind-${item.id}`} />
+                      <Button title="Ingatkan" variant="ghost" size="sm" onPress={() => setRemindPayment({ ...item, id: item.payment_id })} testID={`payment-remind-${item.id}`} />
+                    </View>
+                  </Card>
+                ) : null}
+
+                {item.type === "lease" ? (
+                  <Card testID={`queue-lease-${item.id}`}>
+                    <View style={s.cardHead}>
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <RNText style={s.itemTitle}>{item.name} · {item.unit_name}</RNText>
+                        <RNText style={s.itemSub}>Kontrak sampai {dateLabel(item.end_date + "T00:00:00")}</RNText>
+                      </View>
+                      <StatusPill label={leaseLeftLabel(item.days_left)} tone={item.days_left <= 7 ? "error" : "warning"} testID={`pill-lease-${item.id}`} />
+                    </View>
+                    <View style={s.actions}>
+                      <Button title="Perpanjang / Kabari" size="sm" onPress={() => setLease({ ...item, id: item.tenant_id })} testID={`lease-open-${item.id}`} />
+                      <Button title="Detail" variant="ghost" size="sm" onPress={() => router.push(`/tenant/${item.tenant_id}` as any)} testID={`lease-detail-${item.id}`} />
                     </View>
                   </Card>
                 ) : null}
@@ -266,7 +291,7 @@ export default function TodayScreen() {
                     <View style={s.cardHead}>
                       <View style={{ flex: 1, gap: 2 }}>
                         <RNText style={s.itemTitle}>{item.unit_name ? `Unit ${item.unit_name}` : "Area umum"} · {item.category}</RNText>
-                        <RNText style={s.itemSub}>{item.ai_summary || item.description}</RNText>
+                        <RNText style={s.itemSub}>{item.description}</RNText>
                       </View>
                       {item.urgent ? <StatusPill label="URGENT" tone="error" testID={`pill-urgent-${item.id}`} /> : null}
                     </View>
@@ -275,19 +300,18 @@ export default function TodayScreen() {
                         <Button title="Mulai Kerjakan" variant="ghost" size="sm" onPress={() => startMaint.mutate(item.maintenance_id)} testID={`maint-start-${item.id}`} />
                       ) : null}
                       <Button title="Tandai Selesai" size="sm" onPress={() => resolveMaint.mutate(item.maintenance_id)} testID={`maint-resolve-${item.id}`} />
-                      <Button title="Detail" variant="ghost" size="sm" onPress={() => router.push("/maintenance")} testID={`maint-detail-${item.id}`} />
                     </View>
                   </Card>
                 ) : null}
               </Animated.View>
             ))}
 
-            {items.length === 0 ? (
+            {items.length === 0 && units.total > 0 ? (
               <EmptyState
                 icon="check"
                 title="Semua beres hari ini. Santai dulu."
-                subtitle="Kalau ada chat calon penyewa baru, langsung saja analisis di sini."
-                action={<Button title="Analisis Chat Baru" onPress={() => router.push("/import-chat")} testID="today-analyze-button" />}
+                subtitle="Ada calon penyewa baru? Catat sekarang supaya Sewain bisa ingatkan follow-up-nya."
+                action={<Button title="Tambah Calon Penyewa" onPress={() => router.push("/lead/new" as any)} testID="today-empty-new-lead" />}
               />
             ) : null}
           </View>
@@ -296,20 +320,22 @@ export default function TodayScreen() {
 
       <FollowupSheet lead={followupLead} onClose={() => setFollowupLead(null)} />
       <ReminderSheet payment={remindPayment} onClose={() => setRemindPayment(null)} />
-      <Sheet
-        visible={!!reschedule}
-        onClose={() => setReschedule(null)}
-        title={`Ganti jadwal viewing ${reschedule?.name || ""}`}
-        testID="reschedule-sheet"
-      >
+      <LeaseSheet tenant={lease} onClose={() => setLease(null)} />
+      <Sheet visible={!!reschedule} onClose={() => setReschedule(null)} title={`Ganti jadwal viewing ${reschedule?.name || ""}`} testID="reschedule-sheet">
         <View style={{ gap: spacing.md }}>
-          <Field label="Tanggal (YYYY-MM-DD)">
-            <Input testID="reschedule-date-input" value={reschedDate} onChangeText={setReschedDate} placeholder={todayISO(1)} />
-          </Field>
-          <Field label="Jam (mis. 14.00)">
-            <Input testID="reschedule-time-input" value={reschedTime} onChangeText={setReschedTime} placeholder="14.00" />
-          </Field>
-          <Button title="Simpan Jadwal" onPress={() => reschedMutation.mutate({ id: reschedule.viewing_id, date: reschedDate, time: reschedTime })} testID="reschedule-save-button" />
+          <View style={{ flexDirection: "row", gap: spacing.md }}>
+            <View style={{ flex: 1 }}>
+              <Field label="Tanggal">
+                <DateInput testID="reschedule-date-input" value={reschedDate} onChange={setReschedDate} />
+              </Field>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Field label="Jam">
+                <DateInput mode="time" testID="reschedule-time-input" value={reschedTime} onChange={setReschedTime} />
+              </Field>
+            </View>
+          </View>
+          <Button title="Simpan Jadwal" onPress={() => reschedMutation.mutate({ id: reschedule.viewing_id, date: reschedDate, time: reschedTime })} loading={reschedMutation.isPending} testID="reschedule-save-button" />
         </View>
       </Sheet>
     </View>
@@ -328,10 +354,16 @@ const useStyles = makeStyles((colors) => ({
     paddingBottom: spacing.sm,
   },
   iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.sm },
-  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
+  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm, maxWidth: 760, width: "100%", alignSelf: "center" },
   greeting: { color: colors.onSurfaceSecondary, fontFamily: fonts.medium, fontSize: 15 },
   headline: { color: colors.onSurface, fontFamily: fonts.bold, fontSize: 26, letterSpacing: -0.4, lineHeight: 32 },
   summary: { color: colors.muted, fontFamily: fonts.regular, fontSize: 13.5, lineHeight: 20, marginTop: 2 },
+  banner: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md,
+    padding: spacing.md, borderRadius: radius.md, borderWidth: 1,
+    borderColor: withAlpha(colors.warning, 0.4), backgroundColor: withAlpha(colors.warning, 0.08),
+  },
+  bannerText: { color: colors.onSurfaceTertiary, fontFamily: fonts.medium, fontSize: 13, flex: 1, lineHeight: 18 },
   statGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, marginTop: spacing.md },
   statCard: {
     flexBasis: "47%",
@@ -342,7 +374,7 @@ const useStyles = makeStyles((colors) => ({
     borderRadius: radius.md,
     padding: spacing.md,
     gap: 4,
-    minHeight: 88,
+    minHeight: 80,
   },
   statValue: { color: colors.onSurface, fontFamily: fonts.bold, fontSize: 22, letterSpacing: -0.3 },
   statLabel: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 17 },
@@ -365,8 +397,9 @@ const useStyles = makeStyles((colors) => ({
   setupSub: { color: colors.muted, fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, marginTop: 4 },
   cardHead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
   itemTitle: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 15.5 },
-  itemSub: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 18 },
-  aiNote: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontStyle: "italic", fontSize: 13, lineHeight: 19, marginTop: spacing.sm },
+  itemSub: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 18, marginTop: 2 },
+  reason: { color: colors.warning, fontFamily: fonts.medium, fontSize: 12.5, marginTop: spacing.sm },
+  note: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, marginTop: 4 },
   matchLine: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12.5, marginTop: spacing.sm },
   matchUnit: { color: colors.onSurface, fontFamily: fonts.semibold },
   actions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md, flexWrap: "wrap" },

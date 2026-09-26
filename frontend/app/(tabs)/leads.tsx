@@ -8,14 +8,14 @@ import { usesNativeTabs } from "@/src/navigation";
 import { Icon } from "@/src/components/Icon";
 import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Spinner, StatusPill } from "@/src/components/ui";
 import { api } from "@/src/lib/api";
-import { LEAD_STATUS, relTime, rupiahShort } from "@/src/lib/format";
+import { usePlan } from "@/src/lib/plan";
+import { LEAD_STATUS, dayLabel, relTime, rupiahShort } from "@/src/lib/format";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const STATUS_FILTERS = [
-  { key: "semua", label: "Semua" },
-  { key: "perlu_followup", label: "Perlu follow-up" },
+  { key: "aktif", label: "Aktif" },
   { key: "baru", label: "Baru" },
-  { key: "sedang_ngobrol", label: "Sedang ngobrol" },
+  { key: "sedang_ngobrol", label: "Dihubungi" },
   { key: "viewing", label: "Viewing" },
   { key: "negotiation", label: "Negosiasi" },
   { key: "deal", label: "Deal" },
@@ -35,7 +35,9 @@ export default function LeadsScreen() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
-  const [filter, setFilter] = useState("semua");
+  const [filter, setFilter] = useState("aktif");
+  const { plan, isFree, atLeadLimit, showUpgrade } = usePlan();
+  const addLead = () => (atLeadLimit ? showUpgrade("limit_leads") : router.push("/lead/new" as any));
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["leads", filter],
@@ -46,11 +48,16 @@ export default function LeadsScreen() {
     <View style={s.root}>
       <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
         <RNText style={s.title}>Calon Penyewa</RNText>
-        <Pressable testID="leads-analyze-button" onPress={() => router.push("/import-chat")} style={({ pressed }) => [s.aiBtn, pressed && { opacity: 0.7 }]}>
-          <Icon name="chat" size={16} color={colors.onBrandPrimary} />
-          <RNText style={s.aiBtnText}>Analisis Chat</RNText>
+        <Pressable testID="add-lead-button" onPress={addLead} style={({ pressed }) => [s.aiBtn, pressed && { opacity: 0.7 }]}>
+          <Icon name="plus" size={18} color={colors.onBrandPrimary} />
+          <RNText style={s.aiBtnText}>Tambah</RNText>
         </Pressable>
       </View>
+      {isFree && plan ? (
+        <RNText style={s.usage}>
+          {plan.usage.active_leads}/{plan.limits.max_active_leads} calon aktif · paket Free
+        </RNText>
+      ) : null}
 
       <ChipRow testID="lead-filter-row">
         {STATUS_FILTERS.map((st) => (
@@ -85,9 +92,11 @@ export default function LeadsScreen() {
                 <StatusPill label={LEAD_STATUS[item.status] || item.status} tone={toneFor(item.status)} testID={`lead-status-${item.id}`} />
               </View>
               <RNText style={s.lastContact}>
-                {item.last_interaction_at ? `Chat terakhir ${relTime(item.last_interaction_at)}` : "Belum ada interaksi"}
+                {item.next_followup_date && !["deal", "tidak_jadi"].includes(item.status)
+                  ? `Follow-up ${dayLabel(item.next_followup_date + "T00:00:00").toLowerCase()}`
+                  : item.last_interaction_at ? `Kontak terakhir ${relTime(item.last_interaction_at)}` : "Belum ada interaksi"}
               </RNText>
-              {item.ai_note ? <RNText style={s.aiNote}>“{item.ai_note}”</RNText> : null}
+              {item.notes || item.ai_note ? <RNText style={s.aiNote} numberOfLines={2}>{item.notes || item.ai_note}</RNText> : null}
               {item.matched_unit ? (
                 <RNText style={s.matchLine}>
                   Cocok: <RNText style={s.matchUnit}>{item.matched_unit.name}</RNText> · {rupiahShort(item.matched_unit.monthly_price)}/bln
@@ -98,14 +107,9 @@ export default function LeadsScreen() {
           ListEmptyComponent={
             <EmptyState
               icon="users"
-              title="Belum ada calon penyewa"
-              subtitle="Upload atau tempel chat WhatsApp — Sewain yang baca dan racik jadi daftar."
-              action={
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <Button title="Analisis Chat WA" onPress={() => router.push("/import-chat")} testID="empty-analyze-button" />
-                  <Button title="Tambah Manual" variant="ghost" onPress={() => router.push("/lead/new" as any)} testID="empty-manual-lead-button" />
-                </View>
-              }
+              title={filter === "aktif" ? "Belum ada calon penyewa aktif" : "Tidak ada calon penyewa di status ini"}
+              subtitle="Catat setiap orang yang tanya unit. Sewain carikan unit yang cocok dan ingatkan follow-up-nya."
+              action={<Button title="Tambah Calon Penyewa" onPress={addLead} testID="empty-new-lead-button" />}
             />
           }
         />
@@ -130,7 +134,8 @@ const useStyles = makeStyles((colors) => ({
   name: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 16 },
   meta: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 13 },
   lastContact: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12, marginTop: spacing.sm },
-  aiNote: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontStyle: "italic", fontSize: 13, lineHeight: 19, marginTop: 4 },
+  aiNote: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, marginTop: 4 },
+  usage: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12, paddingHorizontal: spacing.lg, marginBottom: spacing.xs },
   matchLine: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12.5, marginTop: spacing.sm },
   matchUnit: { color: colors.onSurface, fontFamily: fonts.semibold },
 }));

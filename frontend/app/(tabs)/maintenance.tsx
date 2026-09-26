@@ -6,10 +6,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usesNativeTabs } from "@/src/navigation";
 import { Icon } from "@/src/components/Icon";
 import { Sheet } from "@/src/components/Sheet";
-import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Field, Spinner, StatusPill, Textarea } from "@/src/components/ui";
+import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Field, Spinner, StatusPill, SwitchRow, Textarea } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
-import { MAINT_STATUS, PRIORITY_LABEL, relTime } from "@/src/lib/format";
+import { MAINT_STATUS, relTime } from "@/src/lib/format";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const FILTERS = [
@@ -30,7 +30,7 @@ export default function MaintenanceScreen() {
   const [reportOpen, setReportOpen] = useState(false);
   const [desc, setDesc] = useState("");
   const [unitId, setUnitId] = useState<string | null>(null);
-  const [created, setCreated] = useState<any>(null);
+  const [urgent, setUrgent] = useState(false);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["maintenance"],
@@ -40,14 +40,15 @@ export default function MaintenanceScreen() {
   const { data: units } = useQuery({ queryKey: ["units", "semua"], queryFn: () => api<any[]>("/units?status=semua"), enabled: reportOpen });
 
   const create = useMutation({
-    mutationFn: () => api("/maintenance", { method: "POST", body: { description: desc, unit_id: unitId } }),
-    onSuccess: (r: any) => {
+    mutationFn: () => api("/maintenance", { method: "POST", body: { description: desc, unit_id: unitId, urgent } }),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["maintenance"] });
       qc.invalidateQueries({ queryKey: ["today"] });
-      qc.invalidateQueries({ queryKey: ["impact"] });
-      qc.invalidateQueries({ queryKey: ["units"] });
-      setCreated(r);
+      toast(urgent ? "Masalah urgent dicatat — muncul paling atas di Hari Ini" : "Masalah dicatat ✓");
+      setReportOpen(false);
       setDesc("");
+      setUnitId(null);
+      setUrgent(false);
     },
     onError: (e: any) => toast(e?.message || "Gagal melapor", "error"),
   });
@@ -64,7 +65,6 @@ export default function MaintenanceScreen() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["maintenance"] });
       qc.invalidateQueries({ queryKey: ["today"] });
-      qc.invalidateQueries({ queryKey: ["impact"] });
       qc.invalidateQueries({ queryKey: ["units"] });
       toast("Masalah ditandai selesai ✓");
     },
@@ -82,7 +82,7 @@ export default function MaintenanceScreen() {
     <View style={s.root}>
       <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
         <RNText style={s.title}>Masalah</RNText>
-        <Pressable testID="report-issue-button" onPress={() => { setReportOpen(true); setCreated(null); }} style={({ pressed }) => [s.addBtn, pressed && { opacity: 0.7 }]}>
+        <Pressable testID="report-issue-button" onPress={() => setReportOpen(true)} style={({ pressed }) => [s.addBtn, pressed && { opacity: 0.7 }]}>
           <Icon name="plus" size={18} color={colors.onBrandPrimary} />
           <RNText style={s.addText}>Lapor</RNText>
         </Pressable>
@@ -110,7 +110,7 @@ export default function MaintenanceScreen() {
                   <RNText style={s.unitName}>
                     {item.unit_name ? `Unit ${item.unit_name}` : "Area umum"} · {item.category}
                   </RNText>
-                  <RNText style={s.desc}>{item.ai_summary || item.description}</RNText>
+                  <RNText style={s.desc}>{item.description}</RNText>
                 </View>
                 {item.priority === "urgent" && item.status !== "selesai" ? (
                   <StatusPill label="URGENT" tone="error" testID={`maint-urgent-${item.id}`} />
@@ -131,46 +131,31 @@ export default function MaintenanceScreen() {
             </Card>
           )}
           ListEmptyComponent={
-            <EmptyState icon="wrench" title="Tidak ada masalah aktif" subtitle="Laporkan komplain tenant di sini — Sewain yang pilah katagori dan prioritasnya." />
+            <EmptyState icon="wrench" title={filter === "selesai" ? "Belum ada masalah yang selesai" : "Tidak ada masalah aktif"} subtitle="Catat komplain tenant atau kerusakan unit di sini supaya nggak lupa ditindaklanjuti." />
           }
         />
       )}
 
       <Sheet visible={reportOpen} onClose={() => setReportOpen(false)} title="Lapor Masalah" testID="report-issue-sheet" scroll>
-        {created ? (
-          <View style={{ gap: spacing.md }}>
-            <View style={s.aiResult}>
-              <RNText style={s.aiResultTitle}>Sewain sudah pilah laporannya:</RNText>
-              <View style={{ flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                <StatusPill label={created.category} tone="neutral" testID="ai-category-pill" />
-                <StatusPill label={PRIORITY_LABEL[created.priority]} tone={created.priority === "urgent" ? "error" : "neutral"} testID="ai-priority-pill" />
-                {created.unit_name !== undefined ? null : null}
-              </View>
-              <RNText style={s.aiResultSummary}>{created.ai_summary}</RNText>
+        <View style={{ gap: spacing.md }}>
+          <Field label="Masalahnya apa?">
+            <Textarea
+              testID="issue-description-input"
+              value={desc}
+              onChangeText={setDesc}
+              placeholder="mis. AC kamar A12 bocor, airnya kena kasur."
+            />
+          </Field>
+          <Field label="Unit (opsional)">
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {(units || []).map((u: any) => (
+                <Chip key={u.id} label={u.name} active={unitId === u.id} onPress={() => setUnitId(unitId === u.id ? null : u.id)} testID={`issue-unit-${u.id}`} />
+              ))}
             </View>
-            <Button title="Lihat Daftar Masalah" onPress={() => setReportOpen(false)} testID="ai-result-close-button" />
-          </View>
-        ) : (
-          <View style={{ gap: spacing.md }}>
-            <Field label="Ceritakan masalahnya">
-              <Textarea
-                testID="issue-description-input"
-                value={desc}
-                onChangeText={setDesc}
-                placeholder="mis. AC kamar A12 bocor dari tadi malam dan airnya kena kasur."
-              />
-            </Field>
-            <Field label="Unit (opsional — biar Sewain yang tebak)">
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                {(units || []).slice(0, 14).map((u: any) => (
-                  <Chip key={u.id} label={u.name} active={unitId === u.id} onPress={() => setUnitId(unitId === u.id ? null : u.id)} />
-                ))}
-              </View>
-            </Field>
-            <Button title="Kirim & Klasifikasikan dengan AI" onPress={() => create.mutate()} loading={create.isPending} testID="issue-submit-button" />
-            <RNText style={s.note}>Sewain otomatis menentukan katagori, prioritas, dan unit terkait.</RNText>
-          </View>
-        )}
+          </Field>
+          <SwitchRow label="Urgent — perlu ditangani hari ini" value={urgent} onChange={setUrgent} testID="issue-urgent-switch" />
+          <Button title="Catat Masalah" onPress={() => create.mutate()} loading={create.isPending} disabled={desc.trim().length < 3} testID="issue-submit-button" />
+        </View>
       </Sheet>
     </View>
   );
@@ -194,8 +179,5 @@ const useStyles = makeStyles((colors) => ({
   cardFoot: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.md },
   time: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12 },
   actions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
-  aiResult: { backgroundColor: colors.surfaceTertiary, borderRadius: radius.md, padding: spacing.md },
-  aiResultTitle: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 15 },
-  aiResultSummary: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, marginTop: spacing.sm },
   note: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12, lineHeight: 17 },
 }));

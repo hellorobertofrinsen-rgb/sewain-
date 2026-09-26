@@ -8,6 +8,7 @@ import { Icon, IconName } from "@/src/components/Icon";
 import { LogoFull } from "@/src/components/Logo";
 import { StatusPill } from "@/src/components/ui";
 import { useAuth } from "@/src/lib/auth";
+import { usePlan } from "@/src/lib/plan";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const TABS: { name: string; label: string; icon: IconName; sf: string }[] = [
@@ -19,14 +20,13 @@ const TABS: { name: string; label: string; icon: IconName; sf: string }[] = [
 ];
 
 const SECONDARY: { path: string; label: string; icon: IconName }[] = [
-  { path: "/impact", label: "Impact", icon: "chart" },
-  { path: "/tanya", label: "Tanya Sewain", icon: "chat" },
   { path: "/settings", label: "Pengaturan", icon: "sliders" },
 ];
 
 function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const { plan, showUpgrade } = usePlan();
   const { colors } = useTheme();
   const s = useStyles();
 
@@ -58,6 +58,15 @@ function Sidebar() {
         {SECONDARY.map((t) => item(t.path, t.label, t.icon, t.path.slice(1)))}
       </View>
       <View style={{ flex: 1 }} />
+      {plan?.plan === "free" ? (
+        <Pressable testID="sidebar-upgrade" onPress={() => showUpgrade("general")} style={({ pressed }) => [s.upgrade, pressed && { opacity: 0.8 }]}>
+          <RNText style={s.upgradeTitle}>Paket Free</RNText>
+          <RNText style={s.upgradeSub}>
+            {plan.usage.units}/{plan.limits.max_units} unit · {plan.usage.active_leads}/{plan.limits.max_active_leads} calon aktif
+          </RNText>
+          <RNText style={s.upgradeCta}>Upgrade ke Premium →</RNText>
+        </Pressable>
+      ) : null}
       <View style={s.userBox}>
         <View style={s.avatar}>
           <RNText style={s.avatarText}>{initial}</RNText>
@@ -66,7 +75,11 @@ function Sidebar() {
           <RNText numberOfLines={1} style={s.userName}>{user?.name || "-"}</RNText>
           <RNText numberOfLines={1} style={s.userEmail}>{user?.email || ""}</RNText>
         </View>
-        {user?.is_demo ? <StatusPill label="Demo" tone="warning" testID="demo-badge-sidebar" /> : null}
+        {user?.is_demo ? (
+          <StatusPill label="Demo" tone="warning" testID="demo-badge-sidebar" />
+        ) : plan?.plan === "premium" ? (
+          <StatusPill label="Premium" tone="brand" testID="premium-badge-sidebar" />
+        ) : null}
       </View>
     </View>
   );
@@ -83,7 +96,7 @@ function TabsNav({ hideBar }: { hideBar: boolean }) {
       >
         {TABS.map((t) => (
           <NativeTabs.Trigger key={t.name} name={t.name as any}>
-            <NativeTabs.Trigger.Icon sf={t.sf} />
+            <NativeTabs.Trigger.Icon sf={t.sf as any} />
             <NativeTabs.Trigger.Label>{t.label}</NativeTabs.Trigger.Label>
           </NativeTabs.Trigger>
         ))}
@@ -111,7 +124,7 @@ function TabsNav({ hideBar }: { hideBar: boolean }) {
           name={t.name as any}
           options={{
             title: t.label,
-            tabBarIcon: ({ color, size }) => <Icon name={t.icon} size={size ?? 22} color={color} />,
+            tabBarIcon: ({ color, size }) => <Icon name={t.icon} size={size ?? 22} color={color as string} />,
           }}
         />
       ))}
@@ -158,6 +171,18 @@ const useStyles = makeStyles((colors) => ({
   navLabel: { color: colors.muted, fontFamily: fonts.medium, fontSize: 14 },
   navLabelActive: { color: colors.onSurface, fontFamily: fonts.semibold },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md, marginHorizontal: spacing.sm },
+  upgrade: {
+    marginHorizontal: spacing.sm,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 3,
+  },
+  upgradeTitle: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 13 },
+  upgradeSub: { color: colors.muted, fontFamily: fonts.regular, fontSize: 11.5 },
+  upgradeCta: { color: colors.onSurface, fontFamily: fonts.medium, fontSize: 12, marginTop: 4 },
   userBox: {
     flexDirection: "row",
     alignItems: "center",

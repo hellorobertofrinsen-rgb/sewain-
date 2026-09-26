@@ -1,8 +1,8 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { Animated, Modal, Pressable, Text as RNText, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { fonts, makeStyles, radius, spacing } from "@/src/theme";
 
 export function Sheet({
   visible,
@@ -19,17 +19,16 @@ export function Sheet({
   scroll?: boolean;
   testID?: string;
 }) {
-  const { colors } = useTheme();
   const s = useStyles();
   const insets = useSafeAreaInsets();
-  const y = useRef(new Animated.Value(1200)).current;
+  const [y] = useState(() => new Animated.Value(1200));
 
   useEffect(() => {
     if (visible) {
       y.setValue(1200);
       Animated.spring(y, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 24 }).start();
     }
-  }, [visible]);
+  }, [visible, y]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>

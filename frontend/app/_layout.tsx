@@ -1,12 +1,15 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as Font from "expo-font";
-import { LogBox, StatusBar, Text as RNText, View } from "react-native";
+import { useEffect } from "react";
+import { LogBox, Platform, StatusBar, View } from "react-native";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { ErrorBoundary } from "@/src/components/error-boundary";
 import { queryClient } from "@/src/query-client";
 import { AuthProvider } from "@/src/lib/auth";
+import { PlanProvider } from "@/src/lib/plan";
+import "@/src/lib/install";
 import { ToastProvider } from "@/src/components/Toast";
 import { useTheme } from "@/src/theme";
 
@@ -23,6 +26,13 @@ export default function RootLayout() {
   });
   const { colors } = useTheme();
 
+  // Installable web app: register the service worker (production web build only).
+  useEffect(() => {
+    if (Platform.OS === "web" && !__DEV__ && "serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+  }, []);
+
   // One app level ErrorBoundary; a render crash shows a reload screen
   // instead of a blank app.
   return (
@@ -35,10 +45,11 @@ export default function RootLayout() {
             <StatusBar barStyle="light-content" backgroundColor={colors.surface} />
             <AuthProvider>
               <ToastProvider>
-                <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
-                  <Stack.Screen name="import-chat" options={{ animation: "slide_from_bottom" }} />
-                  <Stack.Screen name="tanya" options={{ animation: "slide_from_bottom" }} />
-                </Stack>
+                <PlanProvider>
+                  <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
+                    <Stack.Screen name="lead/new" options={{ animation: "slide_from_bottom" }} />
+                  </Stack>
+                </PlanProvider>
               </ToastProvider>
             </AuthProvider>
           </KeyboardProvider>

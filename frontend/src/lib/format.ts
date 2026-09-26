@@ -111,7 +111,7 @@ export const UNIT_STATUS: Record<string, string> = {
 
 export const LEAD_STATUS: Record<string, string> = {
   baru: "Baru",
-  sedang_ngobrol: "Sedang ngobrol",
+  sedang_ngobrol: "Dihubungi",
   perlu_followup: "Perlu follow-up",
   viewing: "Viewing",
   negotiation: "Negosiasi",
@@ -143,3 +143,25 @@ export const PRIORITY_LABEL: Record<string, string> = {
   normal: "Normal",
   rendah: "Rendah",
 };
+
+// ----------------------------- lease / money ---------------------------------
+
+/** "Sisa 4 bulan" / "Habis dalam 12 hari" / "Habis hari ini" / "Lewat 3 hari". */
+export function leaseLeftLabel(daysLeft: number | null | undefined): string {
+  if (daysLeft == null) return "Tanpa tanggal selesai";
+  if (daysLeft < 0) return `Kontrak lewat ${-daysLeft} hari`;
+  if (daysLeft === 0) return "Kontrak habis hari ini";
+  if (daysLeft <= 45) return `Habis dalam ${daysLeft} hari`;
+  return `Sisa ${Math.round(daysLeft / 30)} bulan`;
+}
+
+/** Digits-only parse for money inputs ("3.200.000" -> 3200000). Empty -> null. */
+export function parseMoney(v: string): number | null {
+  const digits = (v || "").replace(/\D/g, "");
+  return digits ? parseInt(digits, 10) : null;
+}
+
+/** Show a number in a money input with thousand separators. */
+export function moneyInput(n: number | null | undefined): string {
+  return n ? Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "";
+}
