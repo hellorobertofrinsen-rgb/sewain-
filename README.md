@@ -42,15 +42,30 @@ cd backend && pytest            # tes lokal, pakai MongoDB in-memory (tanpa inte
 cd frontend && yarn typecheck && yarn lint
 ```
 
-## Deploy (murah)
+## Deploy (murah): VPS ± Rp50 ribu/bulan + MongoDB Atlas gratis
 
-1. **Database** — buat cluster **free (M0)** di [MongoDB Atlas](https://www.mongodb.com/pricing). Network Access: izinkan `0.0.0.0/0`. Salin connection string.
-2. **App** — di [Render](https://render.com): *New → Blueprint* → pilih repo ini (pakai `render.yaml`), isi `MONGO_URL`. `AUTH_SECRET` & `ADMIN_SECRET` dibuat otomatis.
-   - Paket free Render **tidur setelah 15 menit** tanpa pengunjung (buka pertama ±1 menit). Kalau sudah ada user beneran, naikkan ke Starter (±$7/bulan) supaya selalu nyala.
-   - `Dockerfile` di root juga jalan di host Docker lain (Koyeb, Fly.io, Railway, VPS).
-3. Buka URL-nya → di HP pilih **Pasang aplikasi** (Android/Chrome) atau **Bagikan → Tambah ke Layar Utama** (iPhone).
+Data tersimpan di MongoDB Atlas, jadi VPS-nya bisa diganti kapan saja tanpa kehilangan data.
 
-Env vars: lihat `backend/.env.example`.
+1. **Database** — cluster **free (M0)** di [MongoDB Atlas](https://www.mongodb.com/pricing). *Network Access* → tambahkan `0.0.0.0/0`. Salin connection string (ganti `<db_password>`).
+2. **Domain gratis (disarankan)** — buat subdomain di [duckdns.org](https://www.duckdns.org) (login Google/GitHub), mis. `sewain.duckdns.org`, arahkan ke IP VPS. Domain sendiri juga bisa. Tanpa domain, skrip memakai `IP.sslip.io` (kadang gagal dapat sertifikat HTTPS).
+3. **VPS** — Ubuntu 22.04/24.04, 1 GB RAM cukup (mis. Biznet Gio NEO Lite). Login SSH, lalu jalankan:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/hellorobertofrinsen-rgb/sewain-/main/deploy/setup.sh | sudo bash
+   ```
+
+   Skrip memasang Docker, menanyakan connection string / domain / email, membuat secret otomatis, lalu menjalankan Sewain + HTTPS (Caddy). Selesai → buka `https://domain-kamu`.
+4. Di HP: **Pasang aplikasi** (Android/Chrome) atau Safari → **Bagikan → Tambah ke Layar Utama** (iPhone).
+
+Perintah di VPS:
+
+```bash
+sudo bash /opt/sewain/deploy/update.sh                                  # update ke versi terbaru dari GitHub
+sudo bash /opt/sewain/deploy/set-plan.sh agen@contoh.com premium 2026-12-31   # upgrade manual
+cd /opt/sewain/deploy && sudo docker compose logs app --tail 50          # lihat log kalau ada masalah
+```
+
+Konfigurasi produksi ada di `/opt/sewain/deploy/.env` (termasuk `ADMIN_SECRET`). Alternatif tanpa VPS: `Dockerfile` di root juga jalan di Render (`render.yaml`) atau host Docker lain.
 
 ## Paket Free / Premium
 
@@ -69,14 +84,15 @@ Semua angka ada di **satu file**: `backend/plans.py` (`PLAN_LIMITS`, `PRICING`, 
 
 ### Upgrade manual (setelah transfer dikonfirmasi)
 
+Di VPS: `sudo bash /opt/sewain/deploy/set-plan.sh agen@contoh.com premium 2026-12-31`. Atau dari folder `backend` di komputer mana pun, dengan `MONGO_URL` mengarah ke database produksi:
+
 ```bash
-# dari folder backend, dengan MONGO_URL mengarah ke database produksi
 python set_plan.py agen@contoh.com premium 2026-12-31   # premium sampai tanggal itu (inklusif)
 python set_plan.py agen@contoh.com premium              # premium tanpa tanggal akhir
 python set_plan.py agen@contoh.com free                 # kembali ke free
 ```
 
-Tanpa akses shell (mis. Render free), pakai endpoint admin — `ADMIN_SECRET` ada di dashboard env var:
+Atau lewat endpoint admin (`ADMIN_SECRET` ada di `deploy/.env` di VPS):
 
 ```bash
 curl -X POST https://APP-KAMU/api/admin/set-plan \

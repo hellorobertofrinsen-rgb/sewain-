@@ -1,0 +1,35 @@
+# Sewain on a single VPS: the app (API + web) behind Caddy, which handles HTTPS automatically.
+# Configured by deploy/.env (created by setup.sh). Data lives in MongoDB Atlas, not on this server.
+services:
+  app:
+    build:
+      context: ..
+    env_file: .env
+    restart: unless-stopped
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:
