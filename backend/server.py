@@ -13,6 +13,7 @@ from database import client, ensure_indexes
 from routers_admin import router as admin_router
 from routers_auth import cleanup_expired_demos, router as auth_router
 from routers_main import router as main_router
+from routers_stats import router as stats_router
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('sewain')
@@ -46,6 +47,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(main_router)
+app.include_router(stats_router)
 app.include_router(admin_router)
 
 

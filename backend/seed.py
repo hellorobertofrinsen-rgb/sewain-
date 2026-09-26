@@ -105,7 +105,8 @@ async def seed_demo_account(account_id: str) -> None:
     def T(name, phone, uname, rent, start, end, dep):
         return Tenant(account_id=account_id, unit_id=umap[uname], name=name, phone=phone,
                       start_date=start, end_date=end, monthly_rent=rent, deposit=dep,
-                      payment_due_day=10, origin='seed')
+                      payment_due_day=10, origin='seed', commission=rent // 2,
+                      created_at=datetime.fromisoformat(start).replace(tzinfo=WIB))
 
     month1 = today.replace(day=1)
 
@@ -142,6 +143,10 @@ async def seed_demo_account(account_id: str) -> None:
 
     # ---------------- Leads ----------------
     def L(**kw):
+        # Every seeded prospect got a first reply within the hour (feeds the Laporan speed metric).
+        first = kw.get('last_interaction_at') or now_utc()
+        kw.setdefault('created_at', first - timedelta(days=3, minutes=40))
+        kw.setdefault('first_contact_at', kw['created_at'] + timedelta(minutes=25))
         return Lead(account_id=account_id, origin='seed', source='manual', **kw)
 
     jessica = L(
@@ -197,7 +202,18 @@ async def seed_demo_account(account_id: str) -> None:
         needs_followup=False, confidence=0.9, status='viewing', ai_note='Serius, minta viewing akhir pekan.',
         matched_unit_id=umap['D11'], match_score=91, match_reasons=['Masuk budget', 'Tipe 2 Bedroom', 'Furnished'],
     )
-    for l in (jessica, rizky, maya, budi, liliana):
+    # Just came in and nobody has replied yet -> top of Hari Ini.
+    nadia = Lead(account_id=account_id, origin='seed', source='manual', name='Nadia', phone='+62 821-4400-7781',
+                 budget_max=3_200_000, unit_type='Studio', preferred_location='PIK 2', move_in_date='Bulan depan',
+                 notes='Tanya studio furnished dekat LRT.', created_at=now_utc() - timedelta(minutes=20),
+                 last_interaction_at=now_utc() - timedelta(minutes=20), status='baru')
+    # Closed in the last weeks: one lost (with a reason), one signed.
+    andre = L(name='Andre', phone='+62 812-0000-1111', budget_max=2_000_000, unit_type='Studio',
+              last_interaction_at=_dt(9, 10), status='tidak_jadi', lost_reason='Harga terlalu mahal',
+              closed_at=_dt(9, 10))
+    fina = L(name='Fina', phone='+62 812-0000-2222', budget_max=3_000_000, unit_type='Studio',
+             last_interaction_at=_dt(12, 10), status='deal', closed_at=_dt(12, 10))
+    for l in (jessica, rizky, maya, budi, liliana, nadia, andre, fina):
         await leads.insert_one(l.to_mongo())
 
     viewing = Viewing(account_id=account_id, lead_id=liliana.id, unit_id=umap['D11'],
@@ -225,5 +241,8 @@ async def seed_demo_account(account_id: str) -> None:
         ('property_added', 'property', 'Menambahkan properti Tokyo Riverside Apartment'),
         ('property_added', 'property', 'Menambahkan properti Kos Melati Putih'),
         ('units_imported', 'unit', 'Impor 12 unit properti'),
+        ('tenant_extended', 'tenant', 'Kontrak Sinta diperpanjang 12 bulan'),
+        ('tenant_extended', 'tenant', 'Kontrak Dewi diperpanjang 6 bulan'),
+        ('tenant_checkout', 'tenant', 'Yoga checkout — unit kembali kosong'),
     ]:
         await log_activity_async(account_id, act[0], act[1], act[2], origin='seed')

@@ -10,6 +10,7 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from database import users
+from models import set_request_timezone
 
 SECRET = os.environ['AUTH_SECRET']
 ALGORITHM = 'HS256'
@@ -52,6 +53,14 @@ async def current_account(cred: HTTPAuthorizationCredentials | None = Depends(be
     user = await users.find_one({'_id': ObjectId(sub)})
     if not user:
         raise unauthorized()
+    # Changing or resetting the password signs out every older session.
+    changed = user.get('password_changed_at')
+    if isinstance(changed, datetime):
+        if changed.tzinfo is None:
+            changed = changed.replace(tzinfo=timezone.utc)
+        if int(payload.get('iat') or 0) < int(changed.timestamp()):
+            raise unauthorized()
+    set_request_timezone(user.get('timezone'))
     return user
 
 

@@ -6,4 +6,5 @@ git pull --ff-only
 cd deploy
 docker compose up -d --build
 docker image prune -f >/dev/null
+bash /opt/sewain/deploy/install-cron.sh
 echo "Sewain sudah diperbarui."

@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import jwt
 from bson import ObjectId
@@ -14,10 +14,10 @@ from pydantic import BaseModel, Field
 
 from auth_utils import ALGORITHM, SECRET, bearer, current_account, account_id
 from database import properties, units, leads, viewings, tenants, payments, maintenance, activities
-from helpers import (log_activity_async, generate_payments, days_late, days_since, parse_date, oid,
-                     contract_end, period_label)
+from helpers import (PAYMENT_INTERVALS, log_activity_async, generate_payments, days_late, days_since,
+                     parse_date, oid, contract_end, period_label)
 from matching import AUTO_MATCH_MIN_SCORE, guess_issue_category, match_score, rank_units
-from models import Property, Unit, Lead, Viewing, Tenant, Maintenance, now_utc, today_wib, WIB
+from models import Property, Unit, Lead, Viewing, Tenant, Maintenance, now_utc, today_wib, local_tz
 from plans import (CLOSED_LEAD_STATUSES, ensure_can_create_lead, ensure_can_create_units,
                    require_feature, unit_query)
 
@@ -73,8 +73,9 @@ def _iso(v) -> str | None:
 
 
 def _aware(v: datetime | None) -> datetime | None:
+    """MongoDB hands datetimes back without a zone; they are stored in UTC."""
     if isinstance(v, datetime) and v.tzinfo is None:
-        return v.replace(tzinfo=WIB)
+        return v.replace(tzinfo=timezone.utc)
     return v
 
 
@@ -83,7 +84,7 @@ def _parse_when(s: str) -> datetime:
         when = datetime.fromisoformat(s)
     except Exception:
         raise HTTPException(400, 'Format tanggal tidak valid')
-    return when.replace(tzinfo=WIB) if when.tzinfo is None else when
+    return when.replace(tzinfo=local_tz()) if when.tzinfo is None else when
 
 
 def _check_date(s: str | None, label: str = 'Tanggal') -> str | None:
@@ -534,6 +535,8 @@ async def lead_contacted(lid: str, body: ContactedIn, user: dict = Depends(curre
                   'suggested_followup': None}
     if l.get('status') in ('baru', 'perlu_followup'):
         setq['status'] = 'sedang_ngobrol'
+    if not l.get('first_contact_at'):
+        setq['first_contact_at'] = now_utc()
     if body.message:
         setq['last_message'] = body.message
     await leads.update_one({'_id': l['_id']}, {'$set': setq})
@@ -541,12 +544,17 @@ async def lead_contacted(lid: str, body: ContactedIn, user: dict = Depends(curre
     return await get_lead(lid, user)
 
 
+class NotInterestedIn(BaseModel):
+    reason: str | None = Field(default=None, max_length=200)
+
+
 @router.post('/leads/{lid}/not-interested')
-async def lead_not_interested(lid: str, user: dict = Depends(current_account)):
+async def lead_not_interested(lid: str, body: NotInterestedIn | None = None, user: dict = Depends(current_account)):
     aid = account_id(user)
     l = await _get_lead(aid, lid)
     await leads.update_one({'_id': l['_id']}, {'$set': {'status': 'tidak_jadi', 'needs_followup': False,
-                                                        'next_followup_date': None}})
+                                                        'next_followup_date': None, 'closed_at': now_utc(),
+                                                        'lost_reason': (body.reason if body else None)}})
     await viewings.update_many({'account_id': aid, 'lead_id': lid, 'status': {'$in': ['menunggu', 'terjadwal']}},
                                {'$set': {'status': 'batal'}})
     await log_activity_async(aid, 'lead_lost', 'lead', f'{l["name"]} tidak jadi', lid)
@@ -569,6 +577,8 @@ class NegotiationIn(BaseModel):
     agreed_price: int | None = Field(default=None, ge=0)
     deposit: int | None = Field(default=None, ge=0)
     contract_months: int | None = Field(default=None, ge=1, le=60)
+    payment_interval_months: int | None = None
+    commission: int | None = Field(default=None, ge=0)
     note: str | None = Field(default=None, max_length=1000)
 
 
@@ -603,6 +613,16 @@ class DealIn(BaseModel):
     due_day: int | None = Field(default=None, ge=1, le=28)
     monthly_rent: int | None = Field(default=None, ge=0)
     deposit: int | None = Field(default=None, ge=0)
+    payment_interval_months: int | None = None
+    commission: int | None = Field(default=None, ge=0)
+
+
+def _interval(v: int | None) -> int:
+    if v is None:
+        return 1
+    if v not in PAYMENT_INTERVALS:
+        raise HTTPException(400, 'Pembayaran harus tiap 1, 3, 6, atau 12 bulan')
+    return v
 
 
 @router.post('/leads/{lid}/deal')
@@ -630,15 +650,19 @@ async def lead_deal(lid: str, body: DealIn, user: dict = Depends(current_account
     rent = body.monthly_rent if body.monthly_rent is not None else (nego.get('agreed_price') or u.get('monthly_price', 0))
     deposit = body.deposit if body.deposit is not None else (nego.get('deposit') if nego.get('deposit') is not None else u.get('deposit', 0))
     due_day = body.due_day or 10
+    interval = _interval(body.payment_interval_months or nego.get('payment_interval_months'))
+    commission = body.commission if body.commission is not None else nego.get('commission')
     t = Tenant(account_id=aid, lead_id=lid, unit_id=str(u['_id']), name=l['name'], phone=l.get('phone'),
-               start_date=start, end_date=end, monthly_rent=rent, deposit=deposit, payment_due_day=due_day)
+               start_date=start, end_date=end, monthly_rent=rent, deposit=deposit, payment_due_day=due_day,
+               payment_interval_months=interval, commission=commission)
     await tenants.insert_one(t.to_mongo())
-    docs = generate_payments(aid, t.id, str(u['_id']), rent, start, end, due_day)
+    docs = generate_payments(aid, t.id, str(u['_id']), rent, start, end, due_day, interval=interval)
     if docs:
         await payments.insert_many(docs)
     await units.update_one({'_id': u['_id']}, {'$set': {'status': 'terisi', 'occupied_since': now_utc(), 'vacant_since': None}})
     await leads.update_one({'_id': l['_id']}, {'$set': {'status': 'deal', 'needs_followup': False,
-                                                        'next_followup_date': None, 'matched_unit_id': str(u['_id'])}})
+                                                        'next_followup_date': None, 'matched_unit_id': str(u['_id']),
+                                                        'closed_at': now_utc()}})
     await viewings.update_many({'account_id': aid, 'lead_id': lid, 'status': {'$in': ['menunggu', 'terjadwal']}},
                                {'$set': {'status': 'selesai'}})
     await log_activity_async(aid, 'lead_deal', 'lead', f'{l["name"]} resmi jadi tenant di unit {u["name"]}', lid)
@@ -757,6 +781,8 @@ class TenantIn(BaseModel):
     monthly_rent: int = Field(ge=0)
     deposit: int = Field(default=0, ge=0)
     payment_due_day: int = Field(default=10, ge=1, le=28)
+    payment_interval_months: int | None = None
+    commission: int | None = Field(default=None, ge=0)
 
 
 def _days_left(end_date: str | None) -> int | None:
@@ -831,11 +857,14 @@ async def create_tenant(body: TenantIn, user: dict = Depends(current_account)):
         raise HTTPException(400, f'Unit {u["name"]} sudah terisi')
     start = _check_date(body.start_date, 'Tanggal mulai')
     end = _check_date(body.end_date, 'Tanggal selesai') or contract_end(start, body.contract_months)
+    interval = _interval(body.payment_interval_months)
     t = Tenant(account_id=aid, unit_id=body.unit_id, name=body.name, phone=body.phone, start_date=start,
                end_date=end, monthly_rent=body.monthly_rent, deposit=body.deposit,
-               payment_due_day=body.payment_due_day)
+               payment_due_day=body.payment_due_day, payment_interval_months=interval,
+               commission=body.commission)
     await tenants.insert_one(t.to_mongo())
-    docs = generate_payments(aid, t.id, body.unit_id, body.monthly_rent, start, end, body.payment_due_day)
+    docs = generate_payments(aid, t.id, body.unit_id, body.monthly_rent, start, end, body.payment_due_day,
+                             interval=interval)
     if docs:
         await payments.insert_many(docs)
     await units.update_one({'_id': u['_id']}, {'$set': {'status': 'terisi', 'occupied_since': now_utc(), 'vacant_since': None}})
@@ -860,7 +889,8 @@ async def extend_tenant(tid: str, body: ExtendIn, user: dict = Depends(current_a
     existing = {p['period'] for p in await payments.find({'account_id': aid, 'tenant_id': tid, 'deleted_at': None},
                                                          {'period': 1}).to_list(None)}
     docs = [p for p in generate_payments(aid, tid, t['unit_id'], t.get('monthly_rent', 0), new_start, new_end,
-                                         t.get('payment_due_day', 10)) if p['period'] not in existing]
+                                         t.get('payment_due_day', 10), interval=t.get('payment_interval_months') or 1)
+            if p['period'] not in existing]
     if docs:
         await payments.insert_many(docs)
     await tenants.update_one({'_id': t['_id']}, {'$set': {'end_date': new_end}})
@@ -920,7 +950,7 @@ async def mark_paid(pid: str, user: dict = Depends(current_account)):
     await payments.update_one({'_id': p['_id']}, {'$set': {'status': 'lunas', 'paid_at': now_utc()}})
     t = await tenants.find_one({'_id': oid(p['tenant_id']), 'account_id': aid})
     await log_activity_async(aid, 'payment_paid', 'payment',
-                             f'Pembayaran {t["name"] if t else "-"} {period_label(p["period"])} lunas', pid)
+                             f'Pembayaran {t["name"] if t else "-"} {period_label(p["period"], p.get("months") or 1)} lunas', pid)
     return {'ok': True}
 
 
@@ -1024,6 +1054,8 @@ def followup_reason(l: dict, today_iso: str, now: datetime) -> str | None:
     status = l.get('status')
     if status in CLOSED_LEAD_STATUSES or status == 'viewing':
         return None
+    if status == 'baru' and not l.get('last_contact_at') and not l.get('next_followup_date'):
+        return 'Prospek baru — balas secepatnya'  # response speed is what wins the tenant
     nxt = l.get('next_followup_date')
     if nxt:
         return 'Jadwal follow-up hari ini' if nxt == today_iso else ('Jadwal follow-up terlewat' if nxt < today_iso else None)
@@ -1062,7 +1094,8 @@ async def today(user: dict = Depends(current_account)):
             'suggested_followup': l.get('suggested_followup'), 'negotiation': l.get('negotiation'),
             'last_interaction_at': _iso(l.get('last_interaction_at')),
             'unit': unit_brief(u, pmap) if u else None,
-            'priority': 1 if l.get('status') == 'negotiation' else 2,
+            'is_new': reason.startswith('Prospek baru'),
+            'priority': 0 if reason.startswith('Prospek baru') else (1 if l.get('status') == 'negotiation' else 2),
         })
 
     vdocs = await viewings.find({'account_id': aid, 'deleted_at': None,
@@ -1097,7 +1130,7 @@ async def today(user: dict = Depends(current_account)):
             'type': 'payment', 'id': str(p['_id']), 'payment_id': str(p['_id']),
             'tenant_id': p.get('tenant_id'), 'name': t['name'],
             'unit_name': (umap.get(p.get('unit_id') or '') or {}).get('name', '-'), 'amount': p.get('amount', 0),
-            'period': p.get('period'), 'due_date': p['due_date'], 'days_late': late, 'phone': t.get('phone'),
+            'period': p.get('period'), 'months': p.get('months') or 1, 'due_date': p['due_date'], 'days_late': late, 'phone': t.get('phone'),
             'priority': 0 if late > 0 else 1,
         })
 

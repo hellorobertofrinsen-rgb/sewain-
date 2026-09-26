@@ -47,10 +47,13 @@ def contract_end(start_iso: str, months: int) -> str:
     return (add_months(start, months) - timedelta(days=1)).isoformat()
 
 
-def period_label(period: str) -> str:
+def period_label(period: str, months: int = 1) -> str:
     try:
-        y, m = period.split('-')
-        return f'{MONTHS_ID[int(m) - 1]} {y}'
+        y, m = (int(x) for x in period.split('-'))
+        if months > 1:
+            end = add_months(date(y, m, 1), months - 1)
+            return f'{MONTHS_ID[m - 1][:3]} {y}–{MONTHS_ID[end.month - 1][:3]} {end.year}'
+        return f'{MONTHS_ID[m - 1]} {y}'
     except Exception:
         return period
 
@@ -73,36 +76,40 @@ async def log_activity_async(account_id: str, action: str, entity: str, title: s
     })
 
 
+PAYMENT_INTERVALS = (1, 3, 6, 12)
+
+
 def generate_payments(account_id: str, tenant_id: str, unit_id: str, monthly_rent: int,
                       start_date: str, end_date: str | None, due_day: int,
-                      origin: str = 'user') -> list[dict]:
-    """Generate monthly rent payments from the start month until end (capped at 60)."""
+                      origin: str = 'user', interval: int = 1) -> list[dict]:
+    """Rent bills for a contract, one per `interval` months counted from the start date.
+
+    A 6-month contract has 6 monthly bills (or 1 bill with interval 6), whatever day of
+    the month it starts. Each bill is due on `due_day` of the month its period starts
+    (the first one never before move-in). The last bill only covers the months left.
+    Capped at 60 bills.
+    """
+    interval = interval if interval in PAYMENT_INTERVALS else 1
     start = parse_date(start_date) or today_wib().date()
-    end = parse_date(end_date)
-    if end is None:
-        y, m = start.year, start.month
-        m += 12
-        if m > 12:
-            y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
-        end = date(y, m, last_day_of_month(y, m))
+    end = parse_date(end_date) or (add_months(start, 12) - timedelta(days=1))
     due_day = max(1, min(28, int(due_day or 10)))
     out = []
-    y, m = start.year, start.month
+    k = 0
     while len(out) < 60:
-        if date(y, m, 1) > end:
+        p_start = add_months(start, k * interval)
+        if p_start > end:
             break
-        due = date(y, m, min(due_day, last_day_of_month(y, m)))
-        if y == start.year and m == start.month and due < start:
+        covered = sum(1 for j in range(interval) if add_months(start, k * interval + j) <= end)
+        due = date(p_start.year, p_start.month, min(due_day, last_day_of_month(p_start.year, p_start.month)))
+        if k == 0 and due < start:
             due = start
         p = Payment(
             account_id=account_id, tenant_id=tenant_id, unit_id=unit_id,
-            period=f'{y:04d}-{m:02d}', amount=monthly_rent, due_date=due.isoformat(),
-            origin=origin,
+            period=f'{p_start.year:04d}-{p_start.month:02d}', amount=monthly_rent * covered, months=covered,
+            due_date=due.isoformat(), origin=origin,
         )
         out.append(p.to_mongo())
-        m += 1
-        if m > 12:
-            y, m = y + 1, 1
+        k += 1
     return out
 
 

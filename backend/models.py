@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from datetime import datetime, timezone, timedelta
 from typing import Any, List, Optional
 
@@ -9,13 +10,34 @@ from typing_extensions import Annotated
 
 WIB = timezone(timedelta(hours=7))
 
+# Indonesia has three zones and no daylight saving, so fixed offsets are exact.
+TIMEZONES = {
+    'Asia/Jakarta': ('WIB', timezone(timedelta(hours=7))),
+    'Asia/Makassar': ('WITA', timezone(timedelta(hours=8))),
+    'Asia/Jayapura': ('WIT', timezone(timedelta(hours=9))),
+}
+DEFAULT_TIMEZONE = 'Asia/Jakarta'
+
+# The signed-in account's zone for the current request (set by auth_utils.current_account),
+# so "today", due dates and viewing times follow the agent's own clock.
+_request_tz: ContextVar[timezone] = ContextVar('request_tz', default=WIB)
+
+
+def set_request_timezone(name: str | None) -> None:
+    _request_tz.set(TIMEZONES.get(name or DEFAULT_TIMEZONE, TIMEZONES[DEFAULT_TIMEZONE])[1])
+
+
+def local_tz() -> timezone:
+    return _request_tz.get()
+
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
 def today_wib() -> datetime:
-    return datetime.now(WIB)
+    """Now in the account's local zone (named for the original WIB-only version)."""
+    return datetime.now(local_tz())
 
 
 def _oid(v: Any) -> Any:
@@ -67,6 +89,8 @@ class User(BaseModel):
     # never from a user-facing endpoint. Missing = free (older accounts).
     plan: str = 'free'
     premium_until: Optional[str] = None  # YYYY-MM-DD inclusive; None = no expiry
+    trial: bool = False  # premium came from the automatic 14-day trial, not a payment
+    timezone: str = 'Asia/Jakarta'  # Asia/Jakarta (WIB) | Asia/Makassar (WITA) | Asia/Jayapura (WIT)
     created_at: datetime = Field(default_factory=now_utc)
     model_config = ConfigDict(populate_by_name=True, extra='ignore')
 
@@ -152,6 +176,9 @@ class Lead(BaseDocument):
     # Terms agreed during negotiation; pre-fill the deal -> tenant form.
     # {unit_id, agreed_price, deposit, contract_months, note, updated_at}
     negotiation: Optional[dict] = None
+    first_contact_at: Optional[datetime] = None  # for the response-time metric
+    lost_reason: Optional[str] = None
+    closed_at: Optional[datetime] = None  # when it became deal / tidak_jadi
 
 
 class Viewing(BaseDocument):
@@ -172,6 +199,9 @@ class Tenant(BaseDocument):
     monthly_rent: int = 0
     deposit: int = 0
     payment_due_day: int = 10
+    # Bills every N months (1, 3, 6 or 12): many rentals are paid 6 or 12 months upfront.
+    payment_interval_months: int = 1
+    commission: Optional[int] = None  # agent's commission on this deal (Rupiah)
     status: str = 'aktif'  # aktif | checkout
 
 
@@ -180,6 +210,7 @@ class Payment(BaseDocument):
     unit_id: str
     period: str  # YYYY-MM
     amount: int = 0
+    months: int = 1  # how many months this bill covers
     due_date: str  # YYYY-MM-DD
     status: str = 'belum_bayar'  # belum_bayar | lunas
     paid_at: Optional[datetime] = None

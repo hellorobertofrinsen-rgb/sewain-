@@ -73,9 +73,12 @@ def test_premium_unlimited_then_downgrade_hides_extra_units(account):
 def test_user_cannot_change_own_plan(account):
     # There is no user-facing endpoint that accepts a plan; extra fields are ignored.
     account.patch('/leads/000000000000000000000000', {'plan': 'premium'})
-    r = account.c.post('/api/auth/register', json={'name': 'X', 'email': 'sneaky@contoh.com', 'password': 'rahasia1',
-                                                   'plan': 'premium', 'is_demo': True})
-    assert r.json()['user']['plan'] == 'free' and r.json()['user']['is_demo'] is False
+    r = account.c.post('/api/auth/register', json={'name': 'X', 'email': 'sneaky@contoh.com', 'password': 'rahasia12',
+                                                   'plan': 'premium', 'premium_until': '2099-12-31', 'is_demo': True})
+    assert r.json()['user']['is_demo'] is False
+    sneaky = r.json()['token']
+    plan = account.c.get('/api/plan', headers={'Authorization': f'Bearer {sneaky}'}).json()
+    assert plan['trial'] and plan['premium_until'] != '2099-12-31' and plan['trial_days_left'] == 14
 
 
 def test_admin_endpoint_requires_secret(account, monkeypatch):

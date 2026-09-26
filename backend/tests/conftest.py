@@ -28,14 +28,32 @@ def client():
 _n = 0
 
 
-@pytest.fixture
-def account(client):
-    """A fresh free account; returns a requests-style client with auth headers set."""
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits():
+    import ratelimit
+    ratelimit.reset()
+
+
+def register(client):
     global _n
     _n += 1
-    r = client.post('/api/auth/register', json={'name': 'Agen', 'email': f'agen{_n}@contoh.com', 'password': 'rahasia1'})
+    r = client.post('/api/auth/register', json={'name': 'Agen', 'email': f'agen{_n}@contoh.com', 'password': 'rahasia12'})
     assert r.status_code == 200, r.text
     return Account(client, r.json()['token'], r.json()['user']['email'])
+
+
+@pytest.fixture
+def account(client):
+    """A fresh account on the Free plan (trial switched off); a requests-style client with auth set."""
+    acc = register(client)
+    set_plan(acc.email, 'free')
+    return acc
+
+
+@pytest.fixture
+def trial_account(client):
+    """A freshly registered account, still in its 14-day Premium trial."""
+    return register(client)
 
 
 class Account:
