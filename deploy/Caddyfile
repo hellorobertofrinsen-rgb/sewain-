@@ -1,0 +1,9 @@
+# DOMAIN and ACME_EMAIL come from deploy/.env. Caddy gets and renews the HTTPS certificate itself.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8000
+}
