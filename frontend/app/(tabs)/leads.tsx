@@ -11,30 +11,20 @@ import { LeadDetail } from "@/app/lead/[id]";
 import { api } from "@/src/lib/api";
 import { usePlan } from "@/src/lib/plan";
 import { useIsWide } from "@/src/lib/layout";
-import { waLink } from "@/src/lib/messages";
-import { LEAD_STATUS, dayLabel, relTime, rupiahShort } from "@/src/lib/format";
+import { viewingInviteMessage, waLink } from "@/src/lib/messages";
+import { dateTimeLabel, dayLabel, daysAgoLabel, expiredLabel, rupiah } from "@/src/lib/format";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { STATE_TRANSITION } from "@/src/motion";
 
+// "hot" is the agent's own label (not a status), filtered on this side.
 const STATUS_FILTERS = [
   { key: "aktif", label: "Aktif" },
-  { key: "baru", label: "Baru" },
-  { key: "sedang_ngobrol", label: "Dihubungi" },
+  { key: "hot", label: "Hot buyer" },
   { key: "viewing", label: "Viewing" },
   { key: "negotiation", label: "Negosiasi" },
   { key: "deal", label: "Deal" },
   { key: "tidak_jadi", label: "Tidak jadi" },
 ];
-
-function toneFor(status: string): "success" | "warning" | "error" | "info" | "neutral" | "brand" {
-  if (status === "deal") return "success";
-  if (status === "perlu_followup" || status === "negotiation") return "warning";
-  if (status === "viewing") return "info";
-  if (status === "baru") return "brand";
-  return "neutral";
-}
-
-const unanswered = (l: any) => l.status === "baru" && !l.last_contact_at;
 
 export default function LeadsScreen() {
   const s = useStyles();
@@ -42,26 +32,28 @@ export default function LeadsScreen() {
   const [filter, setFilter] = useState("aktif");
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [openSheet, setOpenSheet] = useState<string | undefined>(undefined);
   const { plan, isFree, atLeadLimit, showUpgrade } = usePlan();
   const addLead = () => (atLeadLimit ? showUpgrade("limit_leads") : router.push("/lead/new" as any));
 
+  const status = filter === "hot" ? "aktif" : filter;
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["leads", filter],
-    queryFn: () => api<any[]>(`/leads?status=${filter}`),
+    queryKey: ["leads", status],
+    queryFn: () => api<any[]>(`/leads?status=${status}`),
   });
 
   const needle = q.trim().toLowerCase();
-  // Unanswered new prospects first: reply speed is what wins the tenant.
-  const rows = [...(data || [])].sort((a, b) => Number(unanswered(b)) - Number(unanswered(a))).filter(
-    (l) => !needle || l.name?.toLowerCase().includes(needle) || (l.phone || "").replace(/\D/g, "").includes(needle.replace(/\D/g, "") || "~"),
-  );
-  const waiting = (data || []).filter(unanswered).length;
-  const sub =
-    filter === "aktif" && data
-      ? [`${data.length} aktif`, waiting ? `${waiting} belum dibalas` : null].filter(Boolean).join(" · ")
-      : null;
+  const rows = (data || [])
+    .filter((l) => filter !== "hot" || l.interest === "high")
+    .filter((l) => !needle || l.name?.toLowerCase().includes(needle) || (l.phone || "").replace(/\D/g, "").includes(needle.replace(/\D/g, "") || "~"));
+  const hotCount = (data || []).filter((l) => l.interest === "high").length;
+  const sub = filter === "aktif" && data ? [`${data.length} aktif`, hotCount ? `${hotCount} hot buyer` : null].filter(Boolean).join(" · ") : null;
 
-  const open = (id: string) => (wide ? setSelected(id) : router.push(`/lead/${id}` as any));
+  const open = (id: string) => {
+    if (!wide) return router.push(`/lead/${id}` as any);
+    setOpenSheet(undefined);
+    setSelected(id);
+  };
 
   const list = (
     <View style={s.root}>
@@ -101,7 +93,15 @@ export default function LeadsScreen() {
           data={rows}
           keyExtractor={(l) => l.id}
           contentContainerStyle={s.listContent}
-          renderItem={({ item }) => <LeadCard item={item} selected={wide && selected === item.id} onPress={() => open(item.id)} />}
+          renderItem={({ item }) => (
+            <LeadCard
+              item={item}
+              selected={wide && selected === item.id}
+              onPress={() => open(item.id)}
+              onOpenUnit={(uid) => router.push(`/unit/${uid}` as any)}
+              onSchedule={() => (wide ? (setSelected(item.id), setOpenSheet("viewing")) : router.push(`/lead/${item.id}?open=viewing` as any))}
+            />
+          )}
           ListEmptyComponent={
             needle ? (
               <EmptyState art="leads" title={`Tidak ada “${q.trim()}”`} subtitle="Coba nama lain, atau cek filter di atas." />
@@ -109,7 +109,7 @@ export default function LeadsScreen() {
               <EmptyState
                 art="leads"
                 title={filter === "aktif" ? "Belum ada prospek aktif" : "Tidak ada prospek di status ini"}
-                subtitle="Catat setiap orang yang tanya unit. Sewain carikan unit yang cocok dan ingatkan kapan harus dibalas."
+                subtitle="Catat setiap orang yang tanya unit. SewAIn carikan unit yang cocok dan ingatkan kapan harus dibalas."
                 action={<Button title="Tambah Prospek" icon="plus" onPress={addLead} testID="empty-new-lead-button" />}
               />
             )
@@ -122,33 +122,41 @@ export default function LeadsScreen() {
   return (
     <SplitView
       list={list}
-      detail={selected ? <LeadDetail key={selected} id={selected} embedded onGone={() => setSelected(null)} /> : null}
+      detail={selected ? <LeadDetail key={`${selected}-${openSheet ?? ""}`} id={selected} open={openSheet} embedded onGone={() => setSelected(null)} /> : null}
       emptyArt="leads"
       emptyText="Pilih prospek untuk lihat detail dan langkah berikutnya."
     />
   );
 }
 
-function LeadCard({ item, selected, onPress }: { item: any; selected: boolean; onPress: () => void }) {
+/** One line of fact the agent recorded, most useful first; nothing when there's nothing recorded. */
+function factLine(item: any): string | null {
+  const closed = ["deal", "tidak_jadi"].includes(item.status);
+  if (!closed && item.next_viewing_at) return `Viewing ${dateTimeLabel(item.next_viewing_at)}`;
+  if (item.last_viewing_at) return `Sudah viewing ${daysAgoLabel(item.last_viewing_at)}`;
+  if (!closed && item.next_followup_date) return `Follow-up ${dayLabel(item.next_followup_date + "T00:00:00").toLowerCase()}`;
+  return null;
+}
+
+function LeadCard({ item, selected, onPress, onOpenUnit, onSchedule }: { item: any; selected: boolean; onPress: () => void; onOpenUnit: (id: string) => void; onSchedule: () => void }) {
   const s = useStyles();
   const { colors } = useTheme();
   const wa = waLink(item.phone);
-  const isNew = unanswered(item);
   const closed = ["deal", "tidak_jadi"].includes(item.status);
+  const hot = item.interest === "high";
+  const stage = item.status === "negotiation" ? "Negosiasi" : item.status === "deal" ? "Deal" : item.status === "tidak_jadi" ? "Tidak jadi" : null;
+  const fact = factLine(item);
+  const meta = [
+    item.unit_type,
+    item.budget_max || item.budget_min ? `Budget ${rupiah(item.budget_max || item.budget_min)}` : null,
+    expiredLabel(item.move_in_date),
+  ].filter(Boolean);
   return (
     <Card testID={`lead-card-${item.id}`} onPress={onPress} style={[STATE_TRANSITION, s.card, selected && s.cardSelected]}>
       <View style={s.cardHead}>
         <View style={{ flex: 1, gap: 4 }}>
           <RNText style={s.name} numberOfLines={1}>{item.name}</RNText>
-          <RNText style={s.meta} numberOfLines={1}>
-            {[
-              item.unit_type,
-              item.budget_max || item.budget_min ? `≤ ${rupiahShort(item.budget_max || item.budget_min)}` : null,
-              item.move_in_date ? `pindah ${item.move_in_date}` : null,
-            ]
-              .filter(Boolean)
-              .join(" · ") || "Kebutuhan belum dicatat"}
-          </RNText>
+          {meta.length ? <RNText style={s.meta}>{meta.join(" · ")}</RNText> : null}
         </View>
         {wa && !closed ? (
           <PressableScale
@@ -157,26 +165,42 @@ function LeadCard({ item, selected, onPress }: { item: any; selected: boolean; o
             onPress={() => Linking.openURL(wa)}
             style={s.waBtn}
           >
-            <Icon name="message" size={20} color={colors.success} />
+            <Icon name="whatsapp" size={21} color={colors.success} />
           </PressableScale>
         ) : null}
       </View>
-      <View style={s.foot}>
-        <StatusPill label={isNew ? "Baru · belum dibalas" : LEAD_STATUS[item.status] || item.status} tone={toneFor(item.status)} testID={`lead-status-${item.id}`} />
-        <RNText style={[s.when, isNew && { color: colors.brandPrimary, ...fonts.semibold }]} numberOfLines={1}>
-          {isNew
-            ? `masuk ${relTime(item.created_at)}`
-            : item.next_followup_date && !closed
-              ? `Follow-up ${dayLabel(item.next_followup_date + "T00:00:00").toLowerCase()}`
-              : item.last_interaction_at
-                ? `Kontak ${relTime(item.last_interaction_at)}`
-                : ""}
-        </RNText>
-      </View>
+      {hot || stage || fact ? (
+        <View style={s.foot}>
+          {hot ? <StatusPill label="Hot buyer" tone="error" testID={`lead-hot-${item.id}`} /> : null}
+          {stage ? <StatusPill label={stage} tone={item.status === "deal" ? "success" : item.status === "negotiation" ? "warning" : "neutral"} testID={`lead-status-${item.id}`} /> : null}
+          {fact ? <RNText style={s.when} numberOfLines={1}>{fact}</RNText> : null}
+        </View>
+      ) : null}
+      {!closed ? (
+        <View style={s.actions}>
+          {item.next_viewing ? (
+            wa ? (
+              <Button
+                title="Undang Viewing"
+                icon="whatsapp"
+                size="sm"
+                variant="secondary"
+                onPress={() => Linking.openURL(waLink(item.phone, viewingInviteMessage({ name: item.name, unit_name: item.next_viewing.unit_name, scheduled_at: item.next_viewing.at, location: item.next_viewing.location }))!)}
+                testID={`lead-invite-${item.id}`}
+              />
+            ) : null
+          ) : (
+            <Button title="Jadwalkan Viewing" icon="calendar-check" size="sm" variant="secondary" onPress={onSchedule} testID={`lead-schedule-${item.id}`} />
+          )}
+        </View>
+      ) : null}
       {item.matched_unit ? (
-        <RNText style={s.matchLine} numberOfLines={1}>
-          Cocok: <RNText style={s.matchUnit}>{item.matched_unit.name}</RNText> · {rupiahShort(item.matched_unit.monthly_price)}/bln
-        </RNText>
+        <PressableScale testID={`lead-match-${item.id}`} role="link" onPress={() => onOpenUnit(item.matched_unit.id)} style={s.matchRow}>
+          <RNText style={s.matchLine} numberOfLines={1}>
+            Cocok: <RNText style={s.matchUnit}>{item.matched_unit.name}</RNText> · {rupiah(item.matched_unit.monthly_price)}/bln
+          </RNText>
+          <Icon name="chevron-right" size={16} color={colors.brandPrimary} />
+        </PressableScale>
       ) : null}
     </Card>
   );
@@ -194,8 +218,10 @@ const useStyles = makeStyles((colors) => ({
   name: { color: colors.onSurface, ...fonts.semibold, fontSize: 18, letterSpacing: -0.2 },
   meta: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15 },
   waBtn: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(30,122,79,0.1)" },
-  foot: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md },
-  when: { color: colors.muted, ...fonts.regular, fontSize: 14, flex: 1, textAlign: "right" },
-  matchLine: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 14, marginTop: spacing.sm },
+  foot: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md, flexWrap: "wrap" },
+  when: { color: colors.onSurfaceSecondary, ...fonts.medium, fontSize: 14 },
+  actions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md, flexWrap: "wrap" },
+  matchRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: spacing.md, alignSelf: "flex-start", paddingVertical: 4 },
+  matchLine: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 14.5 },
   matchUnit: { color: colors.onSurface, ...fonts.semibold },
 }));

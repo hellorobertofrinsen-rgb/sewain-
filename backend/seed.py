@@ -37,6 +37,10 @@ def _dt(days_ago: int = 0, hour: int = 0, minute: int = 0) -> datetime:
     return base.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
+def _date_in(days: int) -> str:
+    return (today_wib().date() + timedelta(days=days)).isoformat()
+
+
 def _next_saturday_14() -> datetime:
     t = today_wib()
     ahead = (5 - t.weekday()) % 7
@@ -122,6 +126,8 @@ async def seed_demo_account(account_id: str) -> None:
     ]
     for name, phone, uname, rent, start, end, dep, mode in tenant_plan:
         t = T(name, phone, uname, rent, start, end, dep)
+        if name in ('Sinta', 'Dewi'):
+            t.extensions = 1  # renewed once already (feeds the Deal → Perpanjang step)
         await tenants.insert_one(t.to_mongo())
         docs = generate_payments(account_id, t.id, umap[uname], rent, start, end, 10, origin='seed')
         for d in docs:
@@ -151,7 +157,7 @@ async def seed_demo_account(account_id: str) -> None:
 
     jessica = L(
         name='Jessica', phone='+62 811-9000-3342', budget_min=3_000_000, budget_max=3_500_000,
-        preferred_location='PIK 2', unit_type='Studio', move_in_date='Juli', occupants=2,
+        preferred_location='PIK 2', unit_type='Studio', move_in_date=_date_in(20), occupants=2,
         requirements=['Fully furnished', 'Ada balkon'], interest='high',
         interest_note='Budget jelas, tanya detail unit, cuma menunggu restu suami.',
         quote='Aku diskusi sama suami dulu ya kak.',
@@ -160,11 +166,12 @@ async def seed_demo_account(account_id: str) -> None:
         suggested_followup='Hai Jessica 👋 Mau follow-up sedikit ya. Unit A12 yang kemarin kamu lihat masih available. '
                            'Kalau masih interested, aku bisa bantu jadwalkan viewing.',
         confidence=0.95, status='perlu_followup', ai_note='Tertarik, tapi ingin diskusi dengan suami.',
+        next_followup_date=_date_in(0),
         matched_unit_id=umap['A12'], match_score=92, match_reasons=['Masuk budget', 'Tipe Studio', 'Tersedia sekarang'],
     )
     rizky = L(
         name='Rizky', phone='+62 812-3456-7788', budget_min=6_000_000, budget_max=7_000_000,
-        preferred_location='PIK 2', unit_type='2 Bedroom', move_in_date='Bulan depan', occupants=3,
+        preferred_location='PIK 2', unit_type='2 Bedroom', move_in_date=_date_in(35), occupants=3,
         requirements=['Ada dapur', 'Untuk keluarga'], interest='high',
         quote='Kalau 2 kamar sekitar 6-7 juta ada ga kak?', last_interaction_at=_dt(4, 11),
         needs_followup=False, status='negotiation',
@@ -176,7 +183,7 @@ async def seed_demo_account(account_id: str) -> None:
     )
     maya = L(
         name='Maya', phone='+62 857-1111-2048', budget_min=1_200_000, budget_max=2_500_000,
-        preferred_location='Cempaka Putih', unit_type='Kost', move_in_date='Bulan ini', occupants=1,
+        preferred_location='Cempaka Putih', unit_type='Kost', move_in_date=_date_in(10), occupants=1,
         requirements=['Kamar mandi dalam'], interest='medium',
         quote='Kak kos di Cempaka Putih yang ada AC berapa ya?', last_interaction_at=_dt(5, 20),
         needs_followup=True, followup_when='Besok', followup_reason='Percakapan terhenti saat tanya-tanya harga.',
@@ -184,11 +191,12 @@ async def seed_demo_account(account_id: str) -> None:
                            'Kamar M02 kosong nih, ada AC dan kamar mandi dalam, Rp1.500.000/bulan. '
                            'Mau aku bantu jadwalkan lihat kamar?',
         confidence=0.9, status='perlu_followup', ai_note='Butuh kamar mandi dalam, sensitif harga.',
+        next_followup_date=_date_in(-1),
         matched_unit_id=umap['M02'], match_score=90, match_reasons=['Masuk budget', 'Lokasi sesuai', 'Tersedia sekarang'],
     )
     budi = L(
         name='Budi', phone='+62 813-5555-9012', budget_min=1_500_000, budget_max=2_000_000,
-        preferred_location='Cempaka Putih', unit_type='Kost', move_in_date='Juli', occupants=1,
+        preferred_location='Cempaka Putih', unit_type='Kost', move_in_date=_date_in(20), occupants=1,
         requirements=['Kost putra'], interest='high',
         quote='Masih kosong nggak kak untuk bulan depan?', last_interaction_at=_dt(1, 9),
         needs_followup=False, confidence=0.8, status='viewing', notes='Lihat kamar M04 kemarin sore.',
@@ -196,7 +204,7 @@ async def seed_demo_account(account_id: str) -> None:
     )
     liliana = L(
         name='Liliana', phone='+62 815-2222-6677', budget_min=6_000_000, budget_max=7_500_000,
-        preferred_location='PIK 2', unit_type='2 Bedroom', move_in_date='September', occupants=4,
+        preferred_location='PIK 2', unit_type='2 Bedroom', move_in_date=_date_in(45), occupants=4,
         requirements=['Furnished', '2 kamar'], interest='high',
         quote='Oke kak, boleh dijadwalkan view-nya akhir pekan ini?', last_interaction_at=_dt(1, 16),
         needs_followup=False, confidence=0.9, status='viewing', ai_note='Serius, minta viewing akhir pekan.',
@@ -204,7 +212,7 @@ async def seed_demo_account(account_id: str) -> None:
     )
     # Just came in and nobody has replied yet -> top of Hari Ini.
     nadia = Lead(account_id=account_id, origin='seed', source='manual', name='Nadia', phone='+62 821-4400-7781',
-                 budget_max=3_200_000, unit_type='Studio', preferred_location='PIK 2', move_in_date='Bulan depan',
+                 budget_max=3_200_000, unit_type='Studio', preferred_location='PIK 2', move_in_date=_date_in(35),
                  notes='Tanya studio furnished dekat LRT.', created_at=now_utc() - timedelta(minutes=20),
                  last_interaction_at=now_utc() - timedelta(minutes=20), status='baru')
     # Closed in the last weeks: one lost (with a reason), one signed.

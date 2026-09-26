@@ -66,7 +66,7 @@ export default function Login() {
       >
         <View style={s.logoWrap}>
           <LogoMark size={56} />
-          <RNText style={s.wordmark}>Sewain</RNText>
+          <RNText style={s.wordmark}>SewAIn</RNText>
           <RNText style={s.tagline}>Prospek, unit, dan tenant di satu tempat.</RNText>
           <RNText style={s.sub}>Balas lebih cepat, prospek nggak ada yang hilang, tenant betah perpanjang.</RNText>
         </View>
@@ -137,7 +137,7 @@ export default function Login() {
               role="link"
               onPress={() =>
                 Linking.openURL(
-                  `https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent(`Halo Sewain, saya lupa password. Email akun saya: ${email.trim() || "..."}`)}`,
+                  `https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent(`Halo SewAIn, saya lupa password. Email akun saya: ${email.trim() || "..."}`)}`,
                 )
               }
               style={{ paddingVertical: 4 }}

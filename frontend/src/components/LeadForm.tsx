@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Text as RNText, View } from "react-native";
-import { Chip, Field, Input, Textarea, PressableScale } from "./ui";
+import { Chip, Field, Input, SwitchRow, Textarea, PressableScale } from "./ui";
 import { DateInput } from "./DateInput";
 import { moneyInput, parseMoney } from "@/src/lib/format";
 import { fonts, makeStyles, spacing } from "@/src/theme";
@@ -17,11 +17,12 @@ export type LeadFormValue = {
   requirements: string;
   notes: string;
   next_followup_date: string;
+  hot: boolean;
 };
 
 export const emptyLeadForm: LeadFormValue = {
   name: "", phone: "", budget: "", unit_type: "", preferred_location: "", move_in_date: "",
-  requirements: "", notes: "", next_followup_date: "",
+  requirements: "", notes: "", next_followup_date: "", hot: false,
 };
 
 export function leadToForm(l: any): LeadFormValue {
@@ -31,10 +32,12 @@ export function leadToForm(l: any): LeadFormValue {
     budget: moneyInput(l.budget_max || l.budget_min),
     unit_type: l.unit_type || "",
     preferred_location: l.preferred_location || "",
-    move_in_date: l.move_in_date || "",
+    // Only real dates are kept; older free-text values ("bulan depan") are dropped.
+    move_in_date: /^\d{4}-\d{2}-\d{2}$/.test(l.move_in_date || "") ? l.move_in_date : "",
     requirements: (l.requirements || []).join(", "),
     notes: l.notes || "",
     next_followup_date: l.next_followup_date || "",
+    hot: l.interest === "high",
   };
 }
 
@@ -49,6 +52,7 @@ export function formToBody(f: LeadFormValue) {
     requirements: f.requirements.split(",").map((x) => x.trim()).filter(Boolean),
     notes: f.notes.trim() || null,
     next_followup_date: f.next_followup_date || null,
+    interest: f.hot ? "high" : "medium",
   };
 }
 
@@ -67,6 +71,7 @@ export function LeadForm({ value, onChange, startExpanded = false }: { value: Le
       <Field label="Budget per bulan">
         <Input testID="lead-budget-input" value={value.budget} onChangeText={(v) => set("budget")(moneyInput(parseMoney(v)))} placeholder="3.500.000" keyboardType="numeric" />
       </Field>
+      <SwitchRow label="Hot buyer (serius, siap sewa)" value={value.hot} onChange={(v) => onChange({ ...value, hot: v })} testID="lead-hot-switch" />
       <Field label="Cari tipe">
         <View style={s.wrap}>
           {UNIT_TYPES.map((t) => (
@@ -80,8 +85,8 @@ export function LeadForm({ value, onChange, startExpanded = false }: { value: Le
           <Field label="Lokasi yang diinginkan">
             <Input testID="lead-location-input" value={value.preferred_location} onChangeText={set("preferred_location")} placeholder="mis. Canggu, PIK 2" />
           </Field>
-          <Field label="Rencana pindah">
-            <Input testID="lead-movein-input" value={value.move_in_date} onChangeText={set("move_in_date")} placeholder="mis. bulan depan, 1 Oktober" />
+          <Field label="Expired (butuh unit paling lambat)" hint="Tampil sebagai “Expired …” di kartu prospek.">
+            <DateInput testID="lead-movein-input" value={value.move_in_date} onChange={set("move_in_date")} />
           </Field>
           <Field label="Kebutuhan (pisah pakai koma)">
             <Input testID="lead-reqs-input" value={value.requirements} onChangeText={set("requirements")} placeholder="furnished, boleh hewan, dekat stasiun" />
@@ -95,7 +100,7 @@ export function LeadForm({ value, onChange, startExpanded = false }: { value: Le
         </>
       ) : (
         <PressableScale onPress={() => setMore(true)} testID="lead-more-toggle" style={{ paddingVertical: 4 }}>
-          <RNText style={s.more}>+ Lokasi, rencana pindah, kebutuhan, catatan</RNText>
+          <RNText style={s.more}>+ Lokasi, tanggal expired, kebutuhan, catatan</RNText>
         </PressableScale>
       )}
     </View>

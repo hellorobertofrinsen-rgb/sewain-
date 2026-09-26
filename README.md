@@ -1,12 +1,13 @@
-# Sewain
+# SewAIn - Property Manager
 
-Admin buat agen sewa properti: **mengelola prospek, unit, dan tenant**. Tiga ukuran sukses, dan ketiganya terlihat di halaman **Laporan**:
+Admin buat agen sewa properti: **mengelola prospek, unit, dan tenant**.
 
-1. **Kecepatan layanan** — prospek baru langsung naik ke paling atas *Hari Ini* sampai dibalas.
-2. **Retensi** — kontrak yang mau habis muncul 30 hari sebelumnya, perpanjangan satu ketukan.
-3. **Prospek hilang sedikit** — prospek yang lama tanpa kabar ditandai, alasan “tidak jadi” dicatat.
+- **Hari Ini**: empat angka (prospek aktif, viewing, jatuh tempo, kontrak habis dalam 30 hari), lalu cuplikan Unit, Prospek, dan Tenant.
+- **Prospek**: label "Hot buyer" dari agen sendiri, jadwal viewing, tanggal expired. "Jadwalkan Viewing" langsung membuka Google Calendar, lalu "Undang Viewing" mengirim jadwal + lokasi unit ke WhatsApp prospek.
+- **Unit**: "Share Unit" ke WhatsApp. **Tenant**: "Follow-up Extend" ke WhatsApp.
+- **Laporan**: funnel dari langkah yang dicatat: prospek → viewing → negosiasi → deal → perpanjang. Tidak ada angka tebakan.
 
-Alur utama: **Prospek → unit cocok → follow-up → viewing → negosiasi → deal → tenant → tagihan / kontrak / masalah**. Data yang sudah dicatat ikut terbawa ke tahap berikutnya — tidak perlu ketik ulang. Chat WhatsApp bisa ditempel (atau dibagikan langsung dari WhatsApp ke Sewain) dan nama, nomor, budget, serta tipe unit terisi otomatis.
+Label dan angka hanya berasal dari data yang agen catat sendiri; aplikasi tidak menebak status dari chat WhatsApp yang tidak bisa dilihatnya. Chat WhatsApp bisa ditempel (atau dibagikan dari WhatsApp ke SewAIn) untuk mengisi nama, nomor, budget, dan tipe unit.
 
 ## Stack (sengaja dibuat sederhana & murah)
 
@@ -60,7 +61,7 @@ Data tersimpan di MongoDB Atlas, jadi VPS-nya bisa diganti kapan saja tanpa kehi
    curl -fsSL https://raw.githubusercontent.com/hellorobertofrinsen-rgb/sewain-/main/deploy/setup.sh | sudo bash
    ```
 
-   Skrip memasang Docker, menanyakan connection string / domain / email, membuat secret otomatis, lalu menjalankan Sewain + HTTPS (Caddy). Selesai → buka `https://domain-kamu`.
+   Skrip memasang Docker, menanyakan connection string / domain / email, membuat secret otomatis, lalu menjalankan SewAIn + HTTPS (Caddy). Selesai → buka `https://domain-kamu`.
 4. Di HP: **Pasang aplikasi** (Android/Chrome) atau Safari → **Bagikan → Tambah ke Layar Utama** (iPhone).
 
 Perintah di VPS:
@@ -75,7 +76,7 @@ cd /opt/sewain/deploy && sudo docker compose logs app --tail 50          # lihat
 
 **Backup.** Atlas gratis (M0) tidak punya backup. `update.sh`/`setup.sh` memasang cron yang setiap malam (02.30 WIB) menyimpan `mongodump` ke `/opt/sewain/backups` (14 hari terakhir). Sesekali salin ke laptop: `scp -i KEY user@IP:/opt/sewain/backups/*.gz .`. Restore: lihat komentar di `deploy/backup.sh`.
 
-**Pantau.** Daftar gratis di [UptimeRobot](https://uptimerobot.com), buat monitor HTTP ke `https://domain-kamu/api/health` (tiap 5 menit) → dapat email/WA kalau Sewain mati. Isi database (batas M0 512 MB): `curl -H "X-Admin-Secret: …" https://domain-kamu/api/admin/db-stats`.
+**Pantau.** Daftar gratis di [UptimeRobot](https://uptimerobot.com), buat monitor HTTP ke `https://domain-kamu/api/health` (tiap 5 menit) → dapat email/WA kalau SewAIn mati. Isi database (batas M0 512 MB): `curl -H "X-Admin-Secret: …" https://domain-kamu/api/admin/db-stats`.
 
 **Lupa password.** Tidak ada email otomatis: agen menekan “Lupa password?” → WhatsApp ke kamu → jalankan `reset-link.sh` → kirim link-nya (sekali pakai, 24 jam).
 
@@ -128,7 +129,7 @@ backend/
   server.py          app FastAPI + sajikan web build
   plans.py           ← semua aturan Free/Premium/Trial
   routers_main.py    unit, prospek, viewing, nego, deal, tenant, tagihan, masalah, Hari Ini, export
-  routers_stats.py   Laporan: kecepatan balas, prospek hilang, retensi, uang, per pemilik
+  routers_stats.py   Laporan: funnel prospek → viewing → nego → deal → perpanjang
   routers_auth.py    login/daftar/demo, profil & zona waktu, ganti/reset password, hapus akun
   routers_admin.py   ganti paket, link reset password, isi database (dikunci ADMIN_SECRET)
   ratelimit.py       batas percobaan login/daftar/demo
@@ -137,7 +138,7 @@ backend/
   seed.py            data akun demo
   set_plan.py, reset_link.py   CLI untuk owner
 frontend/
-  app/(tabs)/        Hari Ini, Prospek, Unit, Tenant (+ tombol tambah cepat), Masalah, Laporan
+  app/(tabs)/        Hari Ini, Unit, Prospek, Tenant (+ tombol tambah cepat), Masalah, Laporan
   app/lead, unit, tenant/[id].tsx   detail (di desktop tampil di samping daftar)
   app/privasi, ketentuan, reset     halaman publik
   src/theme.ts       warna, jarak, ukuran huruf — satu tempat
@@ -145,7 +146,7 @@ frontend/
   src/lib/parseChat.ts  ambil nama/nomor/budget dari chat WhatsApp (tanpa AI)
   src/lib/plan.tsx   info paket + sheet Upgrade
   src/lib/messages.ts  template pesan WhatsApp (termasuk laporan ke pemilik)
-  public/            manifest (termasuk “Bagikan ke Sewain”), service worker, ikon PWA
+  public/            manifest (termasuk “Bagikan ke SewAIn”), service worker, ikon PWA
 e2e/                 tes end-to-end (Playwright) + server lokal in-memory
 deploy/              docker compose, Caddy, setup/update/backup/reset-link
 ```

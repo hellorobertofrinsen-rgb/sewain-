@@ -107,7 +107,7 @@ function headline(reason: UpgradeReason, plan?: PlanInfo): { title: string; sub:
         sub: `Paket Free menampilkan ${maxUnits} unit pertama. Upgrade untuk menampilkan semua unitmu lagi — datanya tetap aman.`,
       };
     default:
-      return { title: "Sewain Premium", sub: "Buat agen yang portofolionya lagi tumbuh. Semua fitur Free, tanpa batas." };
+      return { title: "SewAIn Premium", sub: "Buat agen yang portofolionya lagi tumbuh. Semua fitur Free, tanpa batas." };
   }
 }
 
@@ -167,7 +167,7 @@ function UpgradeSheet({ reason, plan, email, onClose }: { reason: UpgradeReason 
           })}
         </View>
 
-        <Button title="Upgrade lewat WhatsApp" icon="phone" size="lg" onPress={contact} testID="upgrade-whatsapp-button" />
+        <Button title="Upgrade lewat WhatsApp" icon="whatsapp" size="lg" onPress={contact} testID="upgrade-whatsapp-button" />
         <RNText style={s.note}>
           Bayar lewat transfer, lalu kirim buktinya di WhatsApp. Setelah dikonfirmasi, akunmu kami aktifkan manual — biasanya kurang dari 1×24 jam. Tanpa langganan otomatis.
         </RNText>

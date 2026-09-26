@@ -1,7 +1,7 @@
 {
-  "name": "Sewain — admin sewa properti",
-  "short_name": "Sewain",
-  "description": "Kelola prospek, unit, dan tenant di satu tempat: balas lebih cepat, prospek nggak hilang, tenant betah.",
+  "name": "SewAIn - Property Manager",
+  "short_name": "SewAIn",
+  "description": "Kelola prospek, unit, dan tenant di satu tempat.",
   "lang": "id",
   "start_url": "/today",
   "scope": "/",

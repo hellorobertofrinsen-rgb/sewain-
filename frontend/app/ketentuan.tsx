@@ -5,7 +5,7 @@ const SECTIONS: DocSection[] = [
   {
     h: "Layanan",
     p: [
-      "Sewain adalah aplikasi web untuk agen properti sewa: mencatat prospek, unit, tenant, viewing, kontrak, dan tagihan. Sewain alat bantu administrasi; keputusan dan komunikasi dengan penyewa maupun pemilik tetap tanggung jawabmu.",
+      "SewAIn adalah aplikasi web untuk agen properti sewa: mencatat prospek, unit, tenant, viewing, kontrak, dan tagihan. SewAIn alat bantu administrasi; keputusan dan komunikasi dengan penyewa maupun pemilik tetap tanggung jawabmu.",
     ],
   },
   {
@@ -39,7 +39,7 @@ const SECTIONS: DocSection[] = [
   {
     h: "Ketersediaan & tanggung jawab",
     p: [
-      "Kami berusaha agar Sewain selalu bisa dipakai dan datamu dicadangkan setiap hari, tetapi layanan disediakan “sebagaimana adanya”. Sejauh diizinkan hukum, kami tidak bertanggung jawab atas kerugian tidak langsung, seperti kehilangan komisi atau keuntungan, akibat gangguan layanan.",
+      "Kami berusaha agar SewAIn selalu bisa dipakai dan datamu dicadangkan setiap hari, tetapi layanan disediakan “sebagaimana adanya”. Sejauh diizinkan hukum, kami tidak bertanggung jawab atas kerugian tidak langsung, seperti kehilangan komisi atau keuntungan, akibat gangguan layanan.",
     ],
   },
   {
@@ -62,7 +62,7 @@ export default function Ketentuan() {
     <DocPage
       title="Ketentuan Layanan"
       updated="26 September 2026"
-      intro="Dengan membuat akun atau memakai Sewain, kamu setuju dengan ketentuan berikut."
+      intro="Dengan membuat akun atau memakai SewAIn, kamu setuju dengan ketentuan berikut."
       sections={SECTIONS}
       testID="terms-page"
     />

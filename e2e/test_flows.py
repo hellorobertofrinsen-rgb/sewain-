@@ -112,24 +112,65 @@ def test_share_target_prefills_new_prospect(phone):
     assert tid(phone, 'lead-location-input').input_value() == 'Cempaka Putih'
 
 
-def test_demo_today_new_prospect_first_and_quick_add(phone):
+def test_demo_home_facts_previews_and_quick_add(phone):
     demo(phone)
-    first = phone.locator('[data-testid^="queue-"]').first
-    assert 'Nadia' in first.inner_text() and 'balas' in first.inner_text().lower()
+    for t in ('stat-leads', 'stat-viewings', 'stat-unpaid', 'stat-leases', 'preview-units', 'preview-leads', 'preview-tenants'):
+        tid(phone, t).wait_for()
+    unpaid = tid(phone, 'stat-unpaid').inner_text()
+    assert 'Jatuh tempo' in unpaid and 'Rp' in unpaid and 'jt' not in unpaid
+    tid(phone, 'stat-unpaid').click()
+    tid(phone, 'focus-sheet').wait_for()
+    assert phone.locator('[data-testid^="queue-payment-"]').count() >= 1
+    phone.keyboard.press('Escape')
+    tid(phone, 'focus-sheet').wait_for(state='hidden')
+    tid(phone, 'preview-units-all').click()
+    phone.wait_for_url('**/units**')
     tid(phone, 'tab-add').click()
     tid(phone, 'quick-add-sheet').wait_for()
     tid(phone, 'quick-add-unit').click()
-    phone.wait_for_url('**/units**')
     tid(phone, 'add-unit-sheet').wait_for()
 
 
-def test_laporan_shows_three_metrics(phone):
+def test_prospect_cards_show_only_recorded_facts(phone):
+    demo(phone)
+    phone.goto('/leads')
+    phone.locator('[data-testid^="lead-card-"]').first.wait_for()
+    text = phone.content()
+    for vague in ('Perlu follow-up', 'belum dibalas', 'hari lalu</div><div>Kontak', '≤'):
+        assert vague not in text, vague
+    assert 'Hot buyer' in text and 'Expired' in text
+
+
+def test_schedule_viewing_then_invite(phone):
+    demo(phone)
+    phone.goto('/leads')
+    card = phone.locator('[data-testid^="lead-card-"]', has_text='Maya').first
+    card.locator('[data-testid^="lead-schedule-"]').click()
+    tid(phone, 'viewing-sheet').wait_for()
+    phone.locator('[data-testid^="viewing-unit-"]').first.click()
+    tid(phone, 'viewing-calendar-switch').click()  # don't open Google Calendar during the test
+    tid(phone, 'viewing-save-button').click()
+    phone.locator('[data-testid^="invite-viewing-"]').first.wait_for()
+
+
+def test_share_unit_and_follow_up_extend(phone):
+    demo(phone)
+    phone.goto('/units')
+    phone.locator('[data-testid^="unit-card-"]').first.click()
+    tid(phone, 'unit-share-button').wait_for()
+    phone.goto('/tenants')
+    phone.locator('[data-testid^="tenant-card-"]').first.click()
+    tid(phone, 'tenant-followup-extend').wait_for()
+
+
+def test_laporan_is_a_recorded_funnel(phone):
     demo(phone)
     tid(phone, 'header-report-button').click()
     tid(phone, 'laporan-screen').wait_for()
-    for m in ('metric-speed', 'metric-lost', 'metric-retention', 'laporan-owners'):
-        tid(phone, m).wait_for()
-    assert '25 mnt' in tid(phone, 'metric-speed').inner_text()
+    for step in ('funnel-viewing', 'funnel-negotiation', 'funnel-deal', 'funnel-extend'):
+        tid(phone, step).wait_for()
+    assert 'dari' in tid(phone, 'funnel-viewing').inner_text()
+    assert 'Kecepatan' not in phone.content()
 
 
 def test_desktop_split_view(desktop):

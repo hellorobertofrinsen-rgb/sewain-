@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Sewain",
+    "name": "SewAIn",
     "slug": "sewain",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -26,12 +26,12 @@
       "bundler": "metro",
       "output": "single",
       "favicon": "./assets/images/favicon.png",
-      "name": "Sewain",
-      "shortName": "Sewain",
+      "name": "SewAIn - Property Manager",
+      "shortName": "SewAIn",
       "lang": "id",
       "themeColor": "#F4F5F7",
       "backgroundColor": "#F4F5F7",
-      "description": "AI admin buat bisnis sewa properti."
+      "description": "Kelola prospek, unit, dan tenant di satu tempat."
     },
     "plugins": [
       "expo-router",

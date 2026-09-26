@@ -193,10 +193,10 @@ export default function SettingsScreen() {
 
         {!installed ? (
           <Card testID="install-card">
-            <RNText style={s.cardTitle}>Pasang Sewain di HP</RNText>
+            <RNText style={s.cardTitle}>Pasang SewAIn di HP</RNText>
             {canPromptInstall() ? (
               <>
-                <RNText style={s.cardSub}>Buka Sewain langsung dari layar utama, tampil penuh seperti aplikasi.</RNText>
+                <RNText style={s.cardSub}>Buka SewAIn langsung dari layar utama, tampil penuh seperti aplikasi.</RNText>
                 <Button title="Pasang Aplikasi" icon="upload" onPress={() => promptInstall()} testID="install-button" style={{ marginTop: spacing.md }} />
               </>
             ) : isIOS() ? (
@@ -271,9 +271,9 @@ export default function SettingsScreen() {
           {!user?.is_demo ? <ListRow label="Ganti password" icon="lock" tone="neutral" onPress={() => setSheet("password")} testID="settings-password" /> : null}
           <ListRow
             label="Bantuan lewat WhatsApp"
-            icon="message"
+            icon="whatsapp"
             tone="success"
-            onPress={() => Linking.openURL(`https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent(`Halo Sewain, saya butuh bantuan. Email akun: ${user?.email || ""}`)}`)}
+            onPress={() => Linking.openURL(`https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent(`Halo SewAIn, saya butuh bantuan. Email akun: ${user?.email || ""}`)}`)}
             testID="settings-help"
           />
         </ListGroup>

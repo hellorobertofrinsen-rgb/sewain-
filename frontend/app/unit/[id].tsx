@@ -12,8 +12,8 @@ import { Button, Card, Chip, EmptyState, ErrorBox, Field, Input, ListGroup, List
 import { useToast } from "@/src/components/Toast";
 import { api, photoUrl, uploadFile } from "@/src/lib/api";
 import { useAuth } from "@/src/lib/auth";
-import { waLink } from "@/src/lib/messages";
-import { UNIT_STATUS, dateLabel, daysFromNow, leaseLeftLabel, rupiah, rupiahShort } from "@/src/lib/format";
+import { unitShareMessage, waLink, waShareLink } from "@/src/lib/messages";
+import { UNIT_STATUS, dateLabel, daysFromNow, leaseLeftLabel, rupiah } from "@/src/lib/format";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 export default function UnitDetailRoute() {
@@ -153,7 +153,7 @@ export function UnitDetail({ id, embedded, onGone }: { id: string; embedded?: bo
         ) : null}
 
         <ListGroup title="Detail unit" testID="unit-info">
-          <ListRow label="Harga" value={`${rupiahShort(unit.monthly_price)}/bln`} icon="wallet" tone="brand" />
+          <ListRow label="Harga" value={`${rupiah(unit.monthly_price)}/bln`} icon="wallet" tone="brand" />
           <ListRow label="Deposit" value={unit.deposit ? rupiah(unit.deposit) : "-"} icon="shield" tone="neutral" />
           <ListRow label="Properti" value={unit.property_name || "-"} icon="building" tone="info" />
           <ListRow label="Tipe" value={unit.unit_type} icon="grid" tone="neutral" />
@@ -201,7 +201,7 @@ export function UnitDetail({ id, embedded, onGone }: { id: string; embedded?: bo
                 tone="brand"
                 right={
                   waLink(unit.owner_phone) ? (
-                    <Button title="WhatsApp" variant="secondary" size="sm" onPress={() => Linking.openURL(waLink(unit.owner_phone)!)} testID="unit-owner-wa" />
+                    <Button title="WhatsApp" icon="whatsapp" variant="secondary" size="sm" onPress={() => Linking.openURL(waLink(unit.owner_phone)!)} testID="unit-owner-wa" />
                   ) : undefined
                 }
               />
@@ -219,8 +219,14 @@ export function UnitDetail({ id, embedded, onGone }: { id: string; embedded?: bo
         </View>
 
         <View style={{ gap: spacing.sm }}>
+          <Button
+            title="Share Unit"
+            icon="whatsapp"
+            onPress={() => Linking.openURL(waShareLink(unitShareMessage(unit)))}
+            testID="unit-share-button"
+          />
           {unit.status === "kosong" ? (
-            <Button title="Cari Penyewa yang Cocok" icon="search" onPress={() => setMatchesOpen(true)} testID="find-matches-button" />
+            <Button title="Cari Prospek yang Cocok" variant="secondary" icon="search" onPress={() => setMatchesOpen(true)} testID="find-matches-button" />
           ) : null}
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
             <Button title="Edit" variant="ghost" icon="pencil" onPress={openEdit} testID="unit-edit-button" style={{ flex: 1 }} />
@@ -232,7 +238,7 @@ export function UnitDetail({ id, embedded, onGone }: { id: string; embedded?: bo
 
       <Sheet visible={matchesOpen} onClose={() => setMatchesOpen(false)} title={`Prospek cocok untuk ${unit.name}`} testID="unit-matches-sheet" scroll>
         {matchesLoading ? (
-          <Spinner label="Sewain mencocokkan prospek…" />
+          <Spinner label="SewAIn mencocokkan prospek…" />
         ) : matches?.matches?.length ? (
           <View style={{ gap: spacing.md }}>
             {matches.matches.map((m: any, i: number) => (

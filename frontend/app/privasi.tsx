@@ -18,19 +18,19 @@ const SECTIONS: DocSection[] = [
   {
     h: "Untuk apa data dipakai",
     p: [
-      "Hanya untuk menjalankan Sewain untukmu: menampilkan antrean Hari Ini, mencocokkan prospek dengan unit, membuat tagihan, dan menghitung laporan. Tidak ada pemrosesan AI, tidak dijual, dan tidak dibagikan ke pihak lain untuk pemasaran.",
+      "Hanya untuk menjalankan SewAIn untukmu: menampilkan antrean Hari Ini, mencocokkan prospek dengan unit, membuat tagihan, dan menghitung laporan. Tidak ada pemrosesan AI, tidak dijual, dan tidak dibagikan ke pihak lain untuk pemasaran.",
     ],
   },
   {
     h: "Data orang lain yang kamu catat",
     p: [
-      "Nama dan nomor prospek, tenant, dan pemilik unit adalah data pribadi mereka. Dalam hal ini kamu adalah pengendali data (sesuai UU No. 27 Tahun 2022 tentang Pelindungan Data Pribadi) dan Sewain memprosesnya atas namamu. Catat hanya yang perlu untuk urusan sewa, dan hapus bila orangnya meminta.",
+      "Nama dan nomor prospek, tenant, dan pemilik unit adalah data pribadi mereka. Dalam hal ini kamu adalah pengendali data (sesuai UU No. 27 Tahun 2022 tentang Pelindungan Data Pribadi) dan SewAIn memprosesnya atas namamu. Catat hanya yang perlu untuk urusan sewa, dan hapus bila orangnya meminta.",
     ],
   },
   {
     h: "Di mana data disimpan dan siapa yang bisa melihat",
     p: [
-      "Aplikasi berjalan di server cloud dan database dikelola penyedia cloud pihak ketiga. Koneksi selalu terenkripsi (HTTPS). Setiap akun hanya bisa melihat datanya sendiri. Pengelola Sewain hanya mengakses akun untuk urusan teknis atau saat kamu minta bantuan.",
+      "Aplikasi berjalan di server cloud dan database dikelola penyedia cloud pihak ketiga. Koneksi selalu terenkripsi (HTTPS). Setiap akun hanya bisa melihat datanya sendiri. Pengelola SewAIn hanya mengakses akun untuk urusan teknis atau saat kamu minta bantuan.",
       "Salinan cadangan database dibuat setiap hari dan disimpan paling lama 14 hari.",
     ],
   },
@@ -71,7 +71,7 @@ export default function Privasi() {
     <DocPage
       title="Kebijakan Privasi"
       updated="26 September 2026"
-      intro="Sewain membantu agen mengelola prospek, unit, dan tenant. Halaman ini menjelaskan data apa yang disimpan, untuk apa, dan apa hakmu."
+      intro="SewAIn membantu agen mengelola prospek, unit, dan tenant. Halaman ini menjelaskan data apa yang disimpan, untuk apa, dan apa hakmu."
       sections={SECTIONS}
       testID="privacy-page"
     />

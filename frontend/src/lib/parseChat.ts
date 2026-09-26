@@ -7,7 +7,6 @@ export type ParsedChat = {
   phone?: string;
   budget?: number;
   unit_type?: string;
-  move_in_date?: string;
   preferred_location?: string;
   notes?: string;
 };
@@ -16,7 +15,6 @@ export type ParsedChat = {
 const LINE = /^\[?\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4},?\s+\d{1,2}[.:]\d{2}(?:[.:]\d{2})?(?:\s?[AP]M)?\]?\s*(?:-\s*)?([^:]{1,40}):\s?(.*)$/i;
 const SELF = /^(anda|you|saya|me)$/i;
 
-const MONTHS = ["januari", "februari", "maret", "april", "mei", "juni", "juli", "agustus", "september", "oktober", "november", "desember"];
 
 export function normalizePhone(raw: string): string | undefined {
   let d = raw.replace(/[^\d+]/g, "");
@@ -56,15 +54,6 @@ function unitType(t: string): string | undefined {
   if (/\bvilla\b/.test(t)) return "Villa";
   if (/\b(rumah|kontrakan)\b/.test(t)) return "Rumah";
   return undefined;
-}
-
-function moveIn(t: string): string | undefined {
-  if (/bulan depan/.test(t)) return "Bulan depan";
-  if (/(minggu|pekan) depan/.test(t)) return "Minggu depan";
-  if (/bulan ini/.test(t)) return "Bulan ini";
-  if (/secepatnya|asap|segera/.test(t)) return "Secepatnya";
-  const month = MONTHS.find((mo) => new RegExp(`\\b${mo}\\b`).test(t));
-  return month ? month.charAt(0).toUpperCase() + month.slice(1) : undefined;
 }
 
 // Matched on the original text so "PIK 2" keeps its capitals.
@@ -110,7 +99,7 @@ export function parseChat(raw: string): ParsedChat {
   const amounts = parseAmounts(theirs);
   if (amounts.length) out.budget = Math.max(...amounts);
   out.unit_type = unitType(theirs);
-  out.move_in_date = moveIn(theirs);
+  // No move-in guess: "bulan depan" isn't a date, and a wrong date is worse than none.
   out.preferred_location = location(theirsRaw);
   const quote = (theirLines.length ? theirLines : lines).map((l) => l.trim()).filter(Boolean).slice(-4).join(" / ");
   if (quote) out.notes = quote.length > 280 ? quote.slice(0, 277) + "…" : quote;

@@ -15,7 +15,7 @@ import { UnitThumb } from "@/src/components/UnitThumb";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
 import { usePlan } from "@/src/lib/plan";
-import { UNIT_STATUS, daysFromNow, rupiahShort } from "@/src/lib/format";
+import { UNIT_STATUS, daysFromNow, rupiah } from "@/src/lib/format";
 import { fonts, makeStyles, spacing } from "@/src/theme";
 
 const STATUS_FILTERS = [
@@ -144,7 +144,7 @@ export default function UnitsScreen() {
                   <RNText style={s.unitName} numberOfLines={1}>{item.name}</RNText>
                   <RNText style={s.unitSub} numberOfLines={1}>{item.unit_type} · {item.property_name || "-"}</RNText>
                   <RNText style={s.price} numberOfLines={1}>
-                    {rupiahShort(item.monthly_price)}
+                    {rupiah(item.monthly_price)}
                     <RNText style={s.perMonth}>/bln</RNText>
                   </RNText>
                   <RNText style={s.vacant} numberOfLines={1}>
@@ -165,7 +165,7 @@ export default function UnitsScreen() {
               <EmptyState
                 art="units"
                 title={filter === "semua" ? "Belum ada unit" : "Tidak ada unit di status ini"}
-                subtitle="Tambah unit yang kamu pasarkan. Sewain cocokkan dengan prospek yang masuk."
+                subtitle="Tambah unit yang kamu pasarkan. SewAIn cocokkan dengan prospek yang masuk."
                 action={
                   <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
                     <Button title="Tambah Unit" icon="plus" onPress={openAdd} testID="empty-add-unit-button" />

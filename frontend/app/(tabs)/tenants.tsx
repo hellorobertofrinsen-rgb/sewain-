@@ -13,7 +13,7 @@ import { STATE_TRANSITION } from "@/src/motion";
 import { Button, Card, Chip, EmptyState, ErrorBox, Field, IconCircle, Input, Spinner, StatusPill } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
-import { leaseLeftLabel, shortDay, moneyInput, parseMoney, rupiah, rupiahShort, todayISO } from "@/src/lib/format";
+import { leaseLeftLabel, shortDay, moneyInput, parseMoney, rupiah, todayISO } from "@/src/lib/format";
 import { DateInput } from "@/src/components/DateInput";
 import { fonts, makeStyles, spacing, withAlpha } from "@/src/theme";
 
@@ -109,7 +109,7 @@ export default function TenantsScreen() {
                   <View style={{ flex: 1, gap: 3 }}>
                     <RNText style={s.name} numberOfLines={1}>{item.name}</RNText>
                     <RNText style={s.meta} numberOfLines={1}>
-                      Unit {item.unit_name} · {rupiahShort(item.monthly_rent)}/bln
+                      Unit {item.unit_name} · {rupiah(item.monthly_rent)}/bln
                     </RNText>
                   </View>
                 </View>

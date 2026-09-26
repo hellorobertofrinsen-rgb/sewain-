@@ -9,10 +9,19 @@ type IconName =
   | "copy" | "alert" | "clock" | "calendar-check" | "upload" | "file"
   | "send" | "refresh" | "wallet" | "search" | "logout" | "arrow-right"
   | "pencil" | "phone" | "trash" | "eye" | "user" | "key" | "zap" | "trending-up"
-  | "lock" | "globe" | "shield" | "clipboard" | "building" | "message";
+  | "lock" | "globe" | "shield" | "clipboard" | "building" | "message" | "whatsapp" | "person";
 
-const GEOM: Record<string, { d?: string[]; c?: [number, number, number][]; r?: [number, number, number, number, number][] }> = {
-  home: { d: ["M3 10.5L12 3l9 7.5", "M5 9.7V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.7", "M9.5 21v-5.5h5V21"] },
+// d: stroked paths, c: stroked circles, r: stroked rects, f: filled dots.
+// The tab icons (home, building, person, key) follow the logo: thin lines plus a dot.
+const GEOM: Record<string, { d?: string[]; c?: [number, number, number][]; r?: [number, number, number, number, number][]; f?: [number, number, number][] }> = {
+  home: { d: ["M4 20V10.2L12 4l8 6.2V20H4z"], f: [[12, 14.5, 1.4]] },
+  person: { c: [[12, 8.5, 3.5]], d: ["M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"], f: [[19, 5, 1.2]] },
+  whatsapp: {
+    d: [
+      "M20.5 11.6a8.5 8.5 0 0 1-12.4 7.6L3.5 20.5l1.4-4.3A8.5 8.5 0 1 1 20.5 11.6z",
+      "M9 8.3c-.3 3.4 3.2 7 6.7 6.7l.9-1.5-2-1.1-.9.8c-1.2-.5-2.3-1.6-2.8-2.8l.8-.9-1.1-2z",
+    ],
+  },
   grid: { r: [[3, 3, 7, 7, 2], [14, 3, 7, 7, 2], [3, 14, 7, 7, 2], [14, 14, 7, 7, 2]] },
   users: { c: [[9, 7.5, 3.5]], d: ["M2.5 20c0-3.2 2.9-5.3 6.5-5.3s6.5 2.1 6.5 5.3", "M16.5 4.6a3.5 3.5 0 0 1 0 6.8", "M18.5 15.2c1.9.8 3 2.4 3 4.8"] },
   "user-check": { c: [[9, 7.5, 3.5]], d: ["M2.5 20c0-3.2 2.9-5.3 6.5-5.3s6.5 2.1 6.5 5.3", "M15.5 12.5l2 2 4-4.5"] },
@@ -42,14 +51,14 @@ const GEOM: Record<string, { d?: string[]; c?: [number, number, number][]; r?: [
   trash: { d: ["M3.5 6.5h17", "M8 6.5V4a1.5 1.5 0 0 1 1.5-1.5h5A1.5 1.5 0 0 1 16 4v2.5", "M5.5 6.5l1 14h11l1-14", "M10 10.5v6", "M14 10.5v6"] },
   eye: { d: ["M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"], c: [[12, 12, 2.75]] },
   user: { c: [[12, 8, 4]], d: ["M4.5 21c0-3.7 3.4-6 7.5-6s7.5 2.3 7.5 6"] },
-  key: { c: [[7.5, 15.5, 4]], d: ["M10.5 12.5L20 3", "M16.5 6.5l3 3", "M14 9l2 2"] },
+  key: { c: [[6.5, 12, 3.5]], d: ["M10 12h11", "M17 12v3", "M20.5 12v3"] },
   zap: { d: ["M13 2.5L4 14h7l-1 7.5L19 10h-7l1-7.5z"] },
   "trending-up": { d: ["M2.5 17.5l6.5-6.5 4 4 8.5-8.5", "M15.5 6.5h6v6"] },
   lock: { r: [[4, 11, 16, 10, 2]], d: ["M8 11V7.5a4 4 0 0 1 8 0V11"] },
   globe: { c: [[12, 12, 9]], d: ["M3 12h18", "M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"] },
   shield: { d: ["M12 21.5s8-3.6 8-10V5l-8-2.5L4 5v6.5c0 6.4 8 10 8 10z"] },
   clipboard: { r: [[5, 4, 14, 17.5, 2]], d: ["M9 2.5h6v3H9z", "M9 11h6", "M9 15h4"] },
-  building: { r: [[4, 3, 11, 18, 1.5]], d: ["M15 9h4.5a.5.5 0 0 1 .5.5V21", "M2.5 21h19", "M8 7h3", "M8 11h3", "M8 15h3"] },
+  building: { r: [[5.5, 3.5, 13, 16.5, 2]], d: ["M3.5 20h17"], f: [[9.5, 8, 1.1], [14.5, 8, 1.1], [9.5, 12, 1.1], [14.5, 12, 1.1], [12, 16.2, 1.1]] },
   message: { d: ["M20.5 14.5a2 2 0 0 1-2 2H8l-4.5 4V5.5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z", "M8 9h8", "M8 12.5h5"] },
 };
 
@@ -75,6 +84,9 @@ export function Icon({
       ))}
       {(g.r ?? []).map(([x, y, w, h, rx = 0], i) => (
         <Rect key={`r${i}`} x={x} y={y} width={w} height={h} rx={rx} stroke={color} strokeWidth={strokeWidth} />
+      ))}
+      {(g.f ?? []).map(([cx, cy, r], i) => (
+        <Circle key={`f${i}`} cx={cx} cy={cy} r={r} fill={color} />
       ))}
     </Svg>
   );

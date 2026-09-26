@@ -45,12 +45,24 @@ async def _visible_units(user: dict, **extra) -> list[dict]:
     return await units.find(await unit_query(user, **extra)).sort('name', 1).to_list(None)
 
 
+def unit_location(u: dict, pmap: dict) -> str:
+    """Where the unit is, from what the agent entered: property, address, area, city."""
+    p = pmap.get(u.get('property_id') or '', {}) if u else {}
+    parts = [p.get('name'), p.get('address'), p.get('area'), p.get('city') or (u or {}).get('city')]
+    seen: list[str] = []
+    for x in parts:
+        if x and x.strip() and x.strip() not in seen:
+            seen.append(x.strip())
+    return ', '.join(seen)
+
+
 def unit_out(u: dict, pmap: dict) -> dict:
     d = noid(u)
     p = pmap.get(u.get('property_id') or '', {})
     d['property_name'] = p.get('name', '')
     d['property_type'] = p.get('type', '')
     d['property_area'] = p.get('area', '')
+    d['location'] = unit_location(u, pmap)
     return d
 
 
@@ -441,9 +453,37 @@ async def list_leads(status: str | None = None, user: dict = Depends(current_acc
         q['status'] = {'$nin': CLOSED_LEAD_STATUSES}
     elif status and status != 'semua':
         q['status'] = status
-    docs = await leads.find(q).sort([('needs_followup', -1), ('last_interaction_at', -1)]).to_list(None)
+    docs = await leads.find(q).sort([('last_interaction_at', -1)]).to_list(None)
     umap = await _units_map(aid)
-    return [lead_out(l, umap) for l in docs]
+    # Viewing facts the agent recorded, for "Sudah viewing 3 hari lalu" / "Viewing Sabtu 14.00".
+    now = now_utc()
+    pmap = await _props_map(aid)
+    last_v: dict[str, datetime] = {}
+    next_v: dict[str, datetime] = {}
+    next_doc: dict[str, dict] = {}
+    for v in await viewings.find({'account_id': aid, 'deleted_at': None, 'status': {'$ne': 'batal'}}).to_list(None):
+        when = _aware(v.get('scheduled_at'))
+        lid = v.get('lead_id') or ''
+        if not when:
+            continue
+        if when <= now:
+            if lid not in last_v or when > last_v[lid]:
+                last_v[lid] = when
+        elif v.get('status') in ('menunggu', 'terjadwal') and (lid not in next_v or when < next_v[lid]):
+            next_v[lid] = when
+            next_doc[lid] = v
+    out = []
+    for l in docs:
+        d = lead_out(l, umap)
+        d['last_viewing_at'] = _iso(last_v.get(d['id']))
+        d['next_viewing_at'] = _iso(next_v.get(d['id']))
+        nv = next_doc.get(d['id'])
+        if nv:
+            u = umap.get(nv.get('unit_id') or '') or {}
+            d['next_viewing'] = {'id': str(nv['_id']), 'at': _iso(next_v[d['id']]), 'unit_name': u.get('name', '-'),
+                                 'location': unit_location(u, pmap) if u else ''}
+        out.append(d)
+    return out
 
 
 @router.post('/leads')
@@ -476,6 +516,7 @@ async def get_lead(lid: str, user: dict = Depends(current_account)):
         vd = noid(v)
         u = umap.get(v.get('unit_id') or '')
         vd['unit_name'] = u['name'] if u else '-'
+        vd['location'] = unit_location(u, pmap) if u else ''
         out['viewings'].append(vd)
     out['suggestions'] = []
     if l.get('status') not in CLOSED_LEAD_STATUSES:
@@ -893,7 +934,7 @@ async def extend_tenant(tid: str, body: ExtendIn, user: dict = Depends(current_a
             if p['period'] not in existing]
     if docs:
         await payments.insert_many(docs)
-    await tenants.update_one({'_id': t['_id']}, {'$set': {'end_date': new_end}})
+    await tenants.update_one({'_id': t['_id']}, {'$set': {'end_date': new_end}, '$inc': {'extensions': 1}})
     await log_activity_async(aid, 'tenant_extended', 'tenant', f'Kontrak {t["name"]} diperpanjang {body.months} bulan', tid)
     return {'end_date': new_end, 'payments_created': len(docs)}
 
@@ -1044,28 +1085,22 @@ async def resolve_maintenance(mid: str, user: dict = Depends(current_account)):
 
 # ============================== Hari Ini ======================================
 
-STALE_DAYS = 3        # a lead with no contact for this long needs a follow-up
 LEASE_HORIZON = 30    # leases ending within this many days show up on Hari Ini
 PAYMENT_HORIZON = 3   # bills due within this many days show up on Hari Ini
 
 
 def followup_reason(l: dict, today_iso: str, now: datetime) -> str | None:
-    """Why this lead needs a follow-up today, or None. Deterministic — no AI call."""
-    status = l.get('status')
-    if status in CLOSED_LEAD_STATUSES or status == 'viewing':
+    """A follow-up shows on Hari Ini only when the agent scheduled it (next_followup_date).
+
+    No guessing from "days since last contact": the app can't see WhatsApp, so a
+    guess would often be wrong.
+    """
+    if l.get('status') in CLOSED_LEAD_STATUSES:
         return None
-    if status == 'baru' and not l.get('last_contact_at') and not l.get('next_followup_date'):
-        return 'Prospek baru — balas secepatnya'  # response speed is what wins the tenant
     nxt = l.get('next_followup_date')
-    if nxt:
-        return 'Jadwal follow-up hari ini' if nxt == today_iso else ('Jadwal follow-up terlewat' if nxt < today_iso else None)
-    if status == 'perlu_followup' or l.get('needs_followup'):
-        return l.get('followup_reason') or 'Perlu di-follow-up'
-    last = _aware(l.get('last_interaction_at') or l.get('created_at'))
-    if last and last < now - timedelta(days=STALE_DAYS):
-        days = (now - last).days
-        return f'Negosiasi belum jalan {days} hari' if status == 'negotiation' else f'Belum dikabari {days} hari'
-    return None
+    if not nxt or nxt > today_iso:
+        return None
+    return 'Jadwal follow-up hari ini' if nxt == today_iso else 'Jadwal follow-up terlewat'
 
 
 @router.get('/today')
@@ -1094,8 +1129,8 @@ async def today(user: dict = Depends(current_account)):
             'suggested_followup': l.get('suggested_followup'), 'negotiation': l.get('negotiation'),
             'last_interaction_at': _iso(l.get('last_interaction_at')),
             'unit': unit_brief(u, pmap) if u else None,
-            'is_new': reason.startswith('Prospek baru'),
-            'priority': 0 if reason.startswith('Prospek baru') else (1 if l.get('status') == 'negotiation' else 2),
+            'hot': l.get('interest') == 'high',
+            'priority': 1 if l.get('status') == 'negotiation' else 2,
         })
 
     vdocs = await viewings.find({'account_id': aid, 'deleted_at': None,
@@ -1108,7 +1143,7 @@ async def today(user: dict = Depends(current_account)):
         items.append({
             'type': 'viewing_result' if past else 'viewing', 'id': str(v['_id']), 'viewing_id': str(v['_id']),
             'lead_id': v.get('lead_id'), 'unit_id': v.get('unit_id'), 'phone': l.get('phone'),
-            'name': l.get('name', '-'), 'unit_name': u.get('name', '-'),
+            'name': l.get('name', '-'), 'unit_name': u.get('name', '-'), 'location': unit_location(u, pmap),
             'scheduled_at': _iso(when), 'status': v.get('status'),
             'priority': 1,
         })
@@ -1171,6 +1206,7 @@ async def today(user: dict = Depends(current_account)):
         'unpaid_count': sum(1 for i in items if i['type'] == 'payment'),
         'leases': sum(1 for i in items if i['type'] == 'lease'),
         'issues': sum(1 for i in items if i['type'] == 'maintenance'),
+        'active_leads': len(ldocs),
         'urgent': sum(1 for i in items if i['type'] == 'maintenance' and i.get('urgent')),
         'total': len(items),
     }

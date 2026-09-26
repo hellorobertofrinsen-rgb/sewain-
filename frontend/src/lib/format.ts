@@ -7,16 +7,6 @@ export function rupiah(n: number | null | undefined): string {
   return `Rp${s}`;
 }
 
-export function rupiahShort(n: number | null | undefined): string {
-  if (n == null) return "-";
-  if (n >= 1_000_000_000) return `Rp${(n / 1_000_000_000).toFixed(1).replace(".", ",")} M`;
-  if (n >= 1_000_000) {
-    const v = n / 1_000_000;
-    return `Rp${(v % 1 === 0 ? v.toFixed(0) : v.toFixed(1).replace(".", ","))} jt`;
-  }
-  return rupiah(n);
-}
-
 export function relTime(iso: string | null | undefined): string {
   if (!iso) return "-";
   const d = new Date(iso);
@@ -36,6 +26,7 @@ export function relTime(iso: string | null | undefined): string {
   return `${Math.floor(months / 12)} tahun lalu`;
 }
 
+/** Whole days since `iso` (positive = in the past, negative = in the future). */
 export function daysFromNow(iso: string | null | undefined): number | null {
   if (!iso) return null;
   const d = new Date(iso);
@@ -50,7 +41,7 @@ export function dayLabel(iso: string | null | undefined): string {
   if (!iso) return "-";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
-  const diff = daysFromNow(iso) ?? 0;
+  const diff = -(daysFromNow(iso) ?? 0); // days until
   if (diff === 0) return "Hari ini";
   if (diff === 1) return "Besok";
   if (diff === -1) return "Kemarin";
@@ -73,12 +64,28 @@ export function timeLabel(iso: string | null | undefined): string {
   return `${`${d.getHours()}`.padStart(2, "0")}.${`${d.getMinutes()}`.padStart(2, "0")}`;
 }
 
+/** "Expired 23 September" from a YYYY-MM-DD the agent entered; null for anything else. */
+export function expiredLabel(v: string | null | undefined): string | null {
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = new Date(v + "T00:00:00");
+  if (isNaN(d.getTime())) return null;
+  return `Expired ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+/** "3 hari lalu" / "hari ini" for a past ISO datetime (whole days). */
+export function daysAgoLabel(iso: string | null | undefined): string {
+  const n = daysFromNow(iso) ?? 0;
+  if (n <= 0) return "hari ini";
+  if (n === 1) return "kemarin";
+  return `${n} hari lalu`;
+}
+
 /** "Hari ini", "Besok", "Kemarin", else "23 Sep". */
 export function shortDay(iso: string | null | undefined): string {
   if (!iso) return "-";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
-  const diff = daysFromNow(iso) ?? 0;
+  const diff = -(daysFromNow(iso) ?? 0); // days until
   if (diff === 0) return "hari ini";
   if (diff === 1) return "besok";
   if (diff === -1) return "kemarin";

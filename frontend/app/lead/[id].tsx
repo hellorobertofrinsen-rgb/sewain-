@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Linking, ScrollView, Text as RNText, View } from "react-native";
+import { Linking, ScrollView, Switch, Text as RNText, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,12 +12,12 @@ import { Icon } from "@/src/components/Icon";
 import { DateInput } from "@/src/components/DateInput";
 import { FollowupSheet } from "@/src/components/ActionSheets";
 import { LeadForm, LeadFormValue, formToBody, leadToForm } from "@/src/components/LeadForm";
-import { Button, Card, Chip, ErrorBox, Field, Input, ListGroup, ListRow, SectionTitle, Spinner, StatusPill, Textarea, PressableScale } from "@/src/components/ui";
+import { Button, Card, Chip, ErrorBox, Field, Input, ListGroup, ListRow, SectionTitle, Spinner, StatusPill, SwitchRow, Textarea, PressableScale } from "@/src/components/ui";
 import { useCelebrate } from "@/src/components/Celebrate";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
-import { waLink } from "@/src/lib/messages";
-import { VIEWING_STATUS, dateLabel, dateTimeLabel, moneyInput, parseMoney, rupiah, rupiahShort, todayISO } from "@/src/lib/format";
+import { googleCalendarLink, viewingInviteMessage, waLink } from "@/src/lib/messages";
+import { VIEWING_STATUS, dateLabel, dateTimeLabel, moneyInput, parseMoney, rupiah, todayISO, expiredLabel } from "@/src/lib/format";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 const STAGES = [
@@ -47,7 +47,7 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
   const insets = useSafeAreaInsets();
 
   // Arriving from "Lanjut Negosiasi" on Hari Ini (?open=negotiation) opens that form directly.
-  const [sheet, setSheet] = useState<Sheetname>(open === "negotiation" ? "negotiation" : null);
+  const [sheet, setSheet] = useState<Sheetname>(open === "negotiation" ? "negotiation" : open === "viewing" ? "viewing" : null);
 
   const { data: lead, isLoading, error, refetch } = useQuery({
     queryKey: ["lead", id],
@@ -63,6 +63,11 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
   const pickUnit = useMutation({
     mutationFn: (unitId: string | null) => api(`/leads/${id}`, { method: "PATCH", body: { matched_unit_id: unitId } }),
     onSuccess: () => { invalidate(); toast("Unit dipilih ✓"); },
+    onError: onErr,
+  });
+  const setHot = useMutation({
+    mutationFn: (hot: boolean) => api(`/leads/${id}`, { method: "PATCH", body: { interest: hot ? "high" : "medium" } }),
+    onSuccess: () => invalidate(),
     onError: onErr,
   });
   const [lostReason, setLostReason] = useState<string | null>(null);
@@ -148,7 +153,9 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
               <RNText style={s.stepText}>
                 {upcoming ? `Unit ${upcoming.unit_name} · ${dateTimeLabel(upcoming.scheduled_at)}` : "Sudah viewing. Lanjut negosiasi kalau cocok."}
               </RNText>
-              <Button title="Lanjut Negosiasi" onPress={() => setSheet("negotiation")} testID="lead-start-nego" style={s.stepBtn} />
+              {upcoming?.location ? <RNText style={s.muted}>{upcoming.location}</RNText> : null}
+              {upcoming ? <InviteButtons lead={lead} viewing={upcoming} /> : null}
+              <Button title="Lanjut Negosiasi" variant={upcoming ? "ghost" : "primary"} onPress={() => setSheet("negotiation")} testID="lead-start-nego" style={s.stepBtn} />
               <View style={s.row}>
                 <Button title="Follow-up" variant="ghost" size="sm" onPress={() => setSheet("followup")} testID="lead-followup-button" />
                 <Button title="Viewing Lain" variant="ghost" size="sm" onPress={() => setSheet("viewing")} testID="lead-another-viewing" />
@@ -160,9 +167,9 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
               <RNText style={s.stepText}>
                 {lead.next_followup_date ? `Follow-up dijadwalkan ${dateLabel(lead.next_followup_date + "T00:00:00")}.` : lead.matched_unit ? `Tawarkan unit ${lead.matched_unit.name} dan ajak viewing.` : "Kabari dan tanyakan kebutuhannya."}
               </RNText>
-              <Button title="Follow-up" icon="send" onPress={() => setSheet("followup")} testID="lead-followup-button" style={s.stepBtn} />
+              <Button title="Jadwalkan Viewing" icon="calendar-check" onPress={() => setSheet("viewing")} testID="lead-schedule-viewing-button" style={s.stepBtn} />
               <View style={s.row}>
-                <Button title="Jadwalkan Viewing" variant="ghost" size="sm" onPress={() => setSheet("viewing")} testID="lead-schedule-viewing-button" />
+                <Button title="Follow-up" icon="whatsapp" variant="ghost" size="sm" onPress={() => setSheet("followup")} testID="lead-followup-button" />
                 <Button title="Langsung Nego" variant="ghost" size="sm" onPress={() => setSheet("negotiation")} testID="lead-direct-nego" />
               </View>
             </>
@@ -171,13 +178,20 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
 
         {/* Profile */}
         <ListGroup title="Profil" testID="lead-profile">
+          <ListRow
+            label="Hot buyer"
+            sub="Tandai kalau prospek ini serius dan siap sewa."
+            icon="zap"
+            tone="error"
+            right={<Switch testID="lead-hot-toggle" value={lead.interest === "high"} onValueChange={(v) => setHot.mutate(v)} trackColor={{ false: colors.borderStrong, true: colors.error }} thumbColor="#FFFFFF" />}
+          />
           {lead.phone ? (
-            <ListRow label="WhatsApp" value={lead.phone} icon="phone" tone="success" onPress={wa ? () => Linking.openURL(wa) : undefined} testID="lead-phone-row" />
+            <ListRow label="WhatsApp" value={lead.phone} icon="whatsapp" tone="success" onPress={wa ? () => Linking.openURL(wa) : undefined} testID="lead-phone-row" />
           ) : null}
-          <ListRow label="Budget" value={lead.budget_max || lead.budget_min ? `${rupiahShort(lead.budget_max || lead.budget_min)}/bln` : "-"} icon="wallet" tone="brand" />
+          <ListRow label="Budget" value={lead.budget_max || lead.budget_min ? `${rupiah(lead.budget_max || lead.budget_min)}/bln` : "-"} icon="wallet" tone="brand" />
           <ListRow label="Cari tipe" value={lead.unit_type || "-"} icon="building" tone="info" />
           <ListRow label="Lokasi" value={lead.preferred_location || "-"} icon="globe" tone="neutral" />
-          <ListRow label="Rencana pindah" value={lead.move_in_date || "-"} icon="calendar-check" tone="warning" />
+          <ListRow label="Expired" value={expiredLabel(lead.move_in_date)?.replace("Expired ", "") || "-"} icon="calendar-check" tone="warning" />
           {lead.occupants ? <ListRow label="Jumlah orang" value={`${lead.occupants}`} icon="users" tone="neutral" /> : null}
         </ListGroup>
         {lead.requirements?.length || lead.notes || lead.summary || lead.ai_note || lead.quote ? (
@@ -206,6 +220,7 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
                     <RNText style={s.muted}>{lead.matched_unit.unit_type} · {rupiah(lead.matched_unit.monthly_price)} / bulan</RNText>
                   </View>
                   <StatusPill label="Dipilih" tone="success" testID="matched-pill" />
+                  <Icon name="chevron-right" size={18} color={colors.brandPrimary} />
                 </View>
                 {lead.match_reasons?.length ? <RNText style={s.reasons}>✓ {lead.match_reasons.join("  ✓ ")}</RNText> : null}
               </Card>
@@ -213,9 +228,9 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
             {(lead.suggestions || []).filter((x: any) => x.unit.id !== lead.matched_unit?.id).map((x: any) => (
               <Card key={x.unit.id} testID={`suggestion-${x.unit.id}`}>
                 <View style={s.rowBetween}>
-                  <PressableScale style={{ flex: 1 }} onPress={() => router.push(`/unit/${x.unit.id}` as any)}>
-                    <RNText style={s.suggestName}>{x.unit.name}{x.unit.property_name ? ` · ${x.unit.property_name}` : ""}</RNText>
-                    <RNText style={s.muted}>{x.unit.unit_type} · {rupiahShort(x.unit.monthly_price)}/bln</RNText>
+                  <PressableScale style={{ flex: 1 }} role="link" onPress={() => router.push(`/unit/${x.unit.id}` as any)}>
+                    <RNText style={s.suggestName}>{x.unit.name}{x.unit.property_name ? ` · ${x.unit.property_name}` : ""} <RNText style={{ color: colors.brandPrimary }}>›</RNText></RNText>
+                    <RNText style={s.muted}>{x.unit.unit_type} · {rupiah(x.unit.monthly_price)}/bln</RNText>
                     <RNText style={s.reasons}>✓ {x.reasons.join("  ✓ ")}</RNText>
                   </PressableScale>
                   <Button title="Pilih" variant="ghost" size="sm" onPress={() => pickUnit.mutate(x.unit.id)} testID={`pick-unit-${x.unit.id}`} />
@@ -237,6 +252,9 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
                   <RNText style={s.itemSub}>Unit {vw.unit_name} · {dateTimeLabel(vw.scheduled_at)}</RNText>
                   <StatusPill label={VIEWING_STATUS[vw.status] || vw.status} tone={vw.status === "selesai" ? "success" : vw.status === "batal" ? "neutral" : "info"} testID={`lead-viewing-status-${vw.id}`} />
                 </View>
+                {(vw.status === "menunggu" || vw.status === "terjadwal") && new Date(vw.scheduled_at) > new Date() ? (
+                  <InviteButtons lead={lead} viewing={vw} compact />
+                ) : null}
               </Card>
             ))}
           </View>
@@ -297,6 +315,21 @@ function IntervalChips({ value, onChange, prefix }: { value: number; onChange: (
   );
 }
 
+/** "Undang Viewing" sends the schedule and location to the prospect's WhatsApp. */
+function InviteButtons({ lead, viewing, compact }: { lead: any; viewing: any; compact?: boolean }) {
+  const s = useStyles();
+  const info = { name: lead.name, phone: lead.phone, unit_name: viewing.unit_name, location: viewing.location, scheduled_at: viewing.scheduled_at };
+  const wa = waLink(lead.phone, viewingInviteMessage(info));
+  return (
+    <View style={[s.row, !compact && { marginTop: spacing.md }]}>
+      {wa ? (
+        <Button title="Undang Viewing" icon="whatsapp" size={compact ? "sm" : "md"} onPress={() => Linking.openURL(wa)} testID={`invite-viewing-${viewing.id}`} />
+      ) : null}
+      <Button title="Google Calendar" icon="calendar-check" variant="ghost" size="sm" onPress={() => Linking.openURL(googleCalendarLink(info))} testID={`calendar-viewing-${viewing.id}`} />
+    </View>
+  );
+}
+
 type Sheetname = null | "followup" | "viewing" | "negotiation" | "deal" | "edit" | "lost";
 type SheetProps = { lead: any; onClose: () => void; onDone: (msg: string) => void; onErr: (e: any) => void };
 
@@ -311,7 +344,7 @@ function UnitChips({ units, loaded, value, onPick, prefix }: { units: any[]; loa
   return (
     <View style={s.wrap}>
       {units.map((u: any) => (
-        <Chip key={u.id} label={`${u.name} · ${rupiahShort(u.monthly_price)}`} active={value === u.id} onPress={() => onPick(u)} testID={`${prefix}-unit-${u.id}`} />
+        <Chip key={u.id} label={`${u.name} · ${rupiah(u.monthly_price)}`} active={value === u.id} onPress={() => onPick(u)} testID={`${prefix}-unit-${u.id}`} />
       ))}
       {loaded && units.length === 0 ? <RNText style={s.muted}>Tidak ada unit kosong saat ini.</RNText> : null}
     </View>
@@ -339,11 +372,20 @@ function ViewingSheet({ lead, onClose, onDone, onErr }: SheetProps) {
   const s = useStyles();
   const { units, loaded } = useOpenUnits();
   const [v, setV] = useState({ unit: lead.matched_unit?.id || "", date: todayISO(1), time: "14:00" });
+  const [toCalendar, setToCalendar] = useState(true);
   const save = useMutation({
     mutationFn: () => api("/viewings", { method: "POST", body: { lead_id: lead.id, unit_id: v.unit, scheduled_at: `${v.date}T${v.time}:00` } }),
-    onSuccess: () => onDone("Viewing dijadwalkan — muncul di Hari Ini ✓"),
+    onSuccess: () => onDone("Viewing dijadwalkan. Kirim undangannya lewat tombol Undang Viewing."),
     onError: onErr,
   });
+  const submit = () => {
+    const unit = units.find((u: any) => u.id === v.unit);
+    // Opened inside the tap itself so the browser doesn't block it as a pop-up.
+    if (toCalendar && unit) {
+      Linking.openURL(googleCalendarLink({ name: lead.name, phone: lead.phone, unit_name: unit.name, location: unit.location, scheduled_at: new Date(`${v.date}T${v.time}:00`).toISOString() }));
+    }
+    save.mutate();
+  };
   return (
     <Sheet visible onClose={onClose} title={`Viewing ${lead.name}`} testID="viewing-sheet" scroll>
       <View style={{ gap: spacing.md }}>
@@ -358,7 +400,8 @@ function ViewingSheet({ lead, onClose, onDone, onErr }: SheetProps) {
             <Field label="Jam"><DateInput mode="time" testID="viewing-time-input" value={v.time} onChange={(x) => setV({ ...v, time: x })} /></Field>
           </View>
         </View>
-        <Button title="Simpan Viewing" onPress={() => save.mutate()} loading={save.isPending} disabled={!v.unit || !v.date || !v.time} testID="viewing-save-button" />
+        <SwitchRow label="Tambah ke Google Calendar" value={toCalendar} onChange={setToCalendar} testID="viewing-calendar-switch" />
+        <Button title="Simpan Viewing" onPress={submit} loading={save.isPending} disabled={!v.unit || !v.date || !v.time} testID="viewing-save-button" />
       </View>
     </Sheet>
   );
@@ -453,7 +496,7 @@ function DealSheet({ lead, onClose, onDone, onErr }: SheetProps) {
       }),
     onSuccess: (r: any) => {
       onDone("Tenant baru tercatat dan tagihan dibuat ✓");
-      celebrate(`Deal dengan ${lead.name}!`, "Tenant baru tercatat. Tagihannya sudah Sewain buatkan.");
+      celebrate(`Deal dengan ${lead.name}!`, "Tenant baru tercatat. Tagihannya sudah SewAIn buatkan.");
       router.push(`/tenant/${r.tenant_id}` as any);
     },
     onError: onErr,

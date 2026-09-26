@@ -126,7 +126,6 @@ def test_tenant_with_yearly_payment_and_commission(account):
     assert t['payment_interval_months'] == 12 and t['commission'] == 1_500_000
     assert account.post('/tenants', {'name': 'X', 'unit_id': u['id'], 'start_date': start, 'monthly_rent': 1,
                                      'payment_interval_months': 5}).status_code == 400
-    assert account.ok('get', '/stats')['money']['commission'] == 1_500_000
 
 
 def test_deal_carries_negotiated_interval_and_commission(account):
@@ -142,29 +141,49 @@ def test_deal_carries_negotiated_interval_and_commission(account):
 
 # ------------------------------ Laporan ----------------------------------------
 
-def test_stats_three_metrics(account):
-    u = _unit(account, owner_name='Pak Hendra', owner_phone='0812')
+def test_stats_funnel_counts_only_recorded_steps(account):
+    from datetime import timedelta
+    from models import today_wib
+    u = _unit(account)
+    u2 = _unit(account, 'A2')
     a = account.ok('post', '/leads', {'name': 'Andi'})['id']
     b = account.ok('post', '/leads', {'name': 'Budi'})['id']
     account.ok('post', '/leads', {'name': 'Cici'})
-    account.ok('post', f'/leads/{a}/contacted', {'message': 'Halo'})
-    account.ok('post', f'/leads/{b}/not-interested', {'reason': 'Harga terlalu mahal'})
-    account.ok('post', f'/leads/{a}/deal', {'unit_id': u['id']})
-    st = account.ok('get', '/stats')
-    assert st['speed']['responded'] == 1 and st['speed']['median_minutes'] == 0 and st['speed']['waiting'] == 1
-    assert st['leads']['new'] == 3 and st['leads']['deals'] == 1 and st['leads']['lost'] == 1
-    assert st['leads']['conversion'] == 50
-    assert st['leads']['lost_reasons'] == [{'reason': 'Harga terlalu mahal', 'count': 1}]
+    past = (today_wib() - timedelta(days=1)).strftime('%Y-%m-%dT14:00:00')
+    for lid in (a, b):
+        account.ok('post', '/viewings', {'lead_id': lid, 'unit_id': u['id'], 'scheduled_at': past})
+    account.ok('post', f'/leads/{a}/negotiation', {'unit_id': u['id'], 'agreed_price': 3_000_000})
+    account.ok('post', f'/leads/{a}/deal', {})
+    steps = {st['key']: st for st in account.ok('get', '/stats')['steps']}
+    assert (steps['viewing']['count'], steps['viewing']['of'], steps['viewing']['percent']) == (2, 3, 67)
+    assert (steps['negotiation']['count'], steps['negotiation']['of']) == (1, 2)
+    assert (steps['deal']['count'], steps['deal']['of'], steps['deal']['percent']) == (1, 1, 100)
+    assert (steps['extend']['count'], steps['extend']['of']) == (0, 1)
     tid = account.ok('get', '/tenants')[0]['id']
     account.ok('post', f'/tenants/{tid}/extend', {'months': 6})
-    st = account.ok('get', '/stats')
-    assert st['retention']['extended'] == 1 and st['retention']['rate'] == 100
-    assert st['occupancy'] == 100
-    assert st['owners'][0]['name'] == 'Pak Hendra' and st['owners'][0]['terisi'] == 1
+    steps = {st['key']: st for st in account.ok('get', '/stats')['steps']}
+    assert steps['extend']['percent'] == 100
+    # A viewing that hasn't happened yet doesn't count.
+    c = account.ok('post', '/leads', {'name': 'Dina'})['id']
+    future = (today_wib() + timedelta(days=2)).strftime('%Y-%m-%dT14:00:00')
+    account.ok('post', '/viewings', {'lead_id': c, 'unit_id': u2['id'], 'scheduled_at': future})
+    assert {st['key']: st for st in account.ok('get', '/stats')['steps']}['viewing']['count'] == 2
+
+
+def test_lead_list_carries_viewing_facts(account):
+    from datetime import timedelta
+    from models import today_wib
+    u = _unit(account)
+    lid = account.ok('post', '/leads', {'name': 'Eka'})['id']
+    past = (today_wib() - timedelta(days=3)).strftime('%Y-%m-%dT10:00:00')
+    account.ok('post', '/viewings', {'lead_id': lid, 'unit_id': u['id'], 'scheduled_at': past})
+    row = account.ok('get', '/leads?status=aktif')[0]
+    assert row['last_viewing_at'] and row['next_viewing_at'] is None
 
 
 def test_stats_are_private_to_the_account(account, client):
     from conftest import register
     other = register(client)
-    _unit(account, owner_name='Rahasia')
-    assert other.ok('get', '/stats')['owners'] == []
+    _unit(account)
+    account.ok('post', '/leads', {'name': 'Rahasia'})
+    assert other.ok('get', '/stats')['prospects'] == 0

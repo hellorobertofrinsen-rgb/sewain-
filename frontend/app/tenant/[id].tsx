@@ -10,8 +10,8 @@ import { LeaseSheet, LeaseTarget, ReminderSheet, ReminderTarget } from "@/src/co
 import { Button, Card, ErrorBox, ListGroup, ListRow, SectionTitle, Spinner, StatusPill, PressableScale } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
-import { waLink } from "@/src/lib/messages";
-import { dateLabel, leaseLeftLabel, periodLabel, rupiah, rupiahShort } from "@/src/lib/format";
+import { leaseRenewalMessage, waLink } from "@/src/lib/messages";
+import { dateLabel, leaseLeftLabel, periodLabel, rupiah } from "@/src/lib/format";
 import { fonts, makeStyles, spacing, useTheme, withAlpha } from "@/src/theme";
 
 export default function TenantDetailRoute() {
@@ -86,14 +86,23 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
             {dateLabel(tenant.start_date + "T00:00:00")} — {tenant.end_date ? dateLabel(tenant.end_date + "T00:00:00") : "tanpa tanggal selesai"}
           </RNText>
           <View style={s.facts}>
-            <Fact label="Sewa / bulan" value={rupiahShort(tenant.monthly_rent)} />
+            <Fact label="Sewa / bulan" value={rupiah(tenant.monthly_rent)} />
             <Fact label="Dibayar" value={INTERVAL_LABEL[tenant.payment_interval_months || 1] || `${tenant.payment_interval_months} bulan`} />
             <Fact label="Tanggal bayar" value={String(tenant.payment_due_day)} />
           </View>
+          {active && wa && tenant.end_date ? (
+            <Button
+              title="Follow-up Extend"
+              icon="whatsapp"
+              onPress={() => Linking.openURL(waLink(tenant.phone, leaseRenewalMessage({ name: tenant.name, unit_name: tenant.unit_name, end_date: tenant.end_date }))!)}
+              testID="tenant-followup-extend"
+              style={{ marginTop: spacing.md }}
+            />
+          ) : null}
           {active ? (
             <Button
-              title={soon ? "Perpanjang / Kabari Tenant" : "Perpanjang Kontrak"}
-              variant={soon ? "primary" : "ghost"}
+              title="Catat Perpanjangan"
+              variant="ghost"
               onPress={() => setLease({ id: tenant.id, name: tenant.name, unit_name: tenant.unit_name, end_date: tenant.end_date, days_left: tenant.days_left, phone: tenant.phone })}
               testID="tenant-extend-button"
               style={{ marginTop: spacing.md }}
@@ -108,7 +117,7 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
             sub={`Tenant${tenant.phone ? ` · ${tenant.phone}` : ""}`}
             icon="key"
             tone="success"
-            right={wa ? <Button title="WhatsApp" variant="secondary" size="sm" onPress={() => Linking.openURL(wa)} testID="tenant-wa" /> : undefined}
+            right={wa ? <Button title="WhatsApp" icon="whatsapp" variant="secondary" size="sm" onPress={() => Linking.openURL(wa)} testID="tenant-wa" /> : undefined}
           />
           {tenant.owner ? (
             <ListRow
@@ -116,7 +125,7 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
               sub={`Pemilik unit${tenant.owner.phone ? ` · ${tenant.owner.phone}` : ""}`}
               icon="user"
               tone="brand"
-              right={ownerWa ? <Button title="WhatsApp" variant="secondary" size="sm" onPress={() => Linking.openURL(ownerWa)} testID="owner-wa" /> : undefined}
+              right={ownerWa ? <Button title="WhatsApp" icon="whatsapp" variant="secondary" size="sm" onPress={() => Linking.openURL(ownerWa)} testID="owner-wa" /> : undefined}
             />
           ) : null}
           <ListRow label="Deposit" value={tenant.deposit ? rupiah(tenant.deposit) : "-"} icon="shield" tone="neutral" />

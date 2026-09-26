@@ -11,20 +11,19 @@ import { usePlan } from "@/src/lib/plan";
 import { cardShadow, fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { STATE_TRANSITION } from "@/src/motion";
 
-// Phone: four tabs around a central "+" (adding a prospect is the most frequent
-// action and speed of reply is what wins tenants). Masalah and Laporan are one tap
+// Phone: four tabs around a central "+" (quick add). Masalah and Laporan are one tap
 // away from Hari Ini; on desktop everything sits in the sidebar.
 const TABS: { name: string; label: string; icon: IconName }[] = [
   { name: "today", label: "Hari Ini", icon: "home" },
-  { name: "leads", label: "Prospek", icon: "users" },
   { name: "units", label: "Unit", icon: "building" },
+  { name: "leads", label: "Prospek", icon: "person" },
   { name: "tenants", label: "Tenant", icon: "key" },
 ];
 
 const SIDEBAR: { path: string; label: string; icon: IconName }[] = [
   { path: "/today", label: "Hari Ini", icon: "home" },
-  { path: "/leads", label: "Prospek", icon: "users" },
   { path: "/units", label: "Unit", icon: "building" },
+  { path: "/leads", label: "Prospek", icon: "person" },
   { path: "/tenants", label: "Tenant", icon: "key" },
   { path: "/maintenance", label: "Masalah", icon: "wrench" },
   { path: "/laporan", label: "Laporan", icon: "chart" },
@@ -33,7 +32,7 @@ const SIDEBAR: { path: string; label: string; icon: IconName }[] = [
 // ------------------------------ Quick add ---------------------------------------
 
 const QUICK: { key: string; label: string; sub: string; icon: IconName; tone: Tone; go: string }[] = [
-  { key: "lead", label: "Prospek baru", sub: "Orang yang tanya unit", icon: "users", tone: "brand", go: "/lead/new" },
+  { key: "lead", label: "Prospek baru", sub: "Orang yang tanya unit", icon: "person", tone: "brand", go: "/lead/new" },
   { key: "unit", label: "Unit baru", sub: "Listing yang kamu pasarkan", icon: "building", tone: "info", go: "/units?add=1" },
   { key: "tenant", label: "Tenant baru", sub: "Penyewa yang sudah tanda tangan", icon: "key", tone: "success", go: "/tenants?add=1" },
   { key: "issue", label: "Lapor masalah", sub: "Komplain atau kerusakan unit", icon: "wrench", tone: "warning", go: "/maintenance?report=1" },
@@ -86,7 +85,7 @@ function TabBar({ state, navigation, onAdd }: BottomTabBarProps & { onAdd: () =>
         onPress={() => navigation.navigate(t.name as never)}
         style={s.tab}
       >
-        <Icon name={t.icon} size={24} color={active ? colors.brandPrimary : colors.muted} strokeWidth={active ? 2.2 : 1.9} />
+        <Icon name={t.icon} size={25} color={active ? colors.brandPrimary : colors.muted} strokeWidth={active ? 1.9 : 1.6} />
         <RNText style={[s.tabLabel, active && s.tabLabelActive]}>{t.label}</RNText>
       </PressableScale>
     );
@@ -193,8 +192,8 @@ export default function TabsLayout() {
       tabBar={(props) => (wideWeb ? null : <TabBar {...props} onAdd={() => setQuickOpen(true)} />)}
     >
       <Tabs.Screen name="today" options={{ title: "Hari Ini" }} />
-      <Tabs.Screen name="leads" options={{ title: "Prospek" }} />
       <Tabs.Screen name="units" options={{ title: "Unit" }} />
+      <Tabs.Screen name="leads" options={{ title: "Prospek" }} />
       <Tabs.Screen name="tenants" options={{ title: "Tenant" }} />
       <Tabs.Screen name="maintenance" options={{ title: "Masalah" }} />
       <Tabs.Screen name="laporan" options={{ title: "Laporan" }} />

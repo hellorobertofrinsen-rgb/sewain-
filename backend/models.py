@@ -202,6 +202,7 @@ class Tenant(BaseDocument):
     # Bills every N months (1, 3, 6 or 12): many rentals are paid 6 or 12 months upfront.
     payment_interval_months: int = 1
     commission: Optional[int] = None  # agent's commission on this deal (Rupiah)
+    extensions: int = 0  # how many times the contract was renewed
     status: str = 'aktif'  # aktif | checkout
 
 

@@ -25,7 +25,7 @@ function MessageBox({ text, setText, phone, testID }: { text: string; setText: (
       <Textarea testID={`${testID}-input`} value={text} onChangeText={setText} style={{ minHeight: 130 }} />
       <View style={s.row}>
         {wa ? (
-          <Button title="Kirim via WhatsApp" icon="send" onPress={() => Linking.openURL(wa)} testID={`${testID}-whatsapp`} style={{ flex: 1 }} />
+          <Button title="Kirim via WhatsApp" icon="whatsapp" onPress={() => Linking.openURL(wa)} testID={`${testID}-whatsapp`} style={{ flex: 1 }} />
         ) : null}
         <Button
           title="Salin"

@@ -1,4 +1,4 @@
-// Design tokens for Sewain — light, calm and roomy.
+// Design tokens for SewAIn — light, calm and roomy.
 //
 //   Page: very light grey. Cards: white. One accent: a steady "banking" blue that
 //   still feels homey, used for the primary action, the selected state and nothing
@@ -56,7 +56,7 @@ export type ThemeColors = typeof light;
 
 export const defaultScheme: ColorScheme = "light";
 
-// Sewain ships light-only for now.
+// SewAIn ships light-only for now.
 export const themes: { light?: ThemeColors; dark?: ThemeColors } = { light };
 
 export function setColorScheme(_scheme: ColorScheme | null) {
