@@ -215,16 +215,58 @@ def test_profile_photo(account):
     assert r.status_code == 200 and r.json()['photo'] is None
 
 
-def test_units_and_tenants_need_no_setup_order(account):
-    u = account.ok('post', '/units', {'name': 'V1', 'monthly_price': 5_000_000})  # no property yet
-    assert u['property_name'] == 'Properti utama'
-    u2 = account.ok('post', '/units', {'name': 'V2', 'property_name': 'Villa Canggu'})
-    assert u2['property_name'] == 'Villa Canggu'
-    tid = account.ok('post', '/tenants', {'name': 'Kevin', 'start_date': '2026-01-01', 'monthly_rent': 4_000_000,
-                                          'new_unit': {'name': 'B1', 'property_name': 'Villa Canggu'}})['tenant_id']
-    t = account.ok('get', f'/tenants/{tid}')
-    assert t['unit_name'] == 'B1'
-    assert len(account.ok('get', '/properties')) == 2
+def test_unit_is_the_property_and_tenant_needs_a_unit(account):
+    # A unit can always be added, no property step first.
+    u = account.ok('post', '/units', {'name': 'Tokyo Riverside A-12', 'category': 'apartemen', 'unit_type': '1 Bedroom',
+                                      'address': 'PIK 2, Jakarta Utara', 'monthly_price': 5_000_000})
+    assert u['category'] == 'apartemen' and u['location'] == 'PIK 2, Jakarta Utara'  # no "Properti utama" in it
+    assert account.post('/units', {'name': 'X', 'category': 'rumah', 'unit_type': 'Studio'}).status_code == 400
+    assert account.post('/units', {'name': 'X', 'category': 'villa', 'unit_type': 'Studio'}).status_code == 400
+    assert account.patch(f"/units/{u['id']}", {'unit_type': '4 Bedroom'}).status_code == 400  # not an apartment size
+    # A tenant must pick a unit from the list.
+    r = account.post('/tenants', {'name': 'Kevin', 'start_date': '2026-01-01', 'monthly_rent': 4_000_000})
+    assert r.status_code == 400 and 'unit' in r.json()['detail'].lower()
+    tid = account.ok('post', '/tenants', {'name': 'Kevin', 'unit_id': u['id'], 'start_date': '2026-01-01',
+                                          'monthly_rent': 4_000_000})['tenant_id']
+    assert account.ok('get', f'/tenants/{tid}')['unit_name'] == 'Tokyo Riverside A-12'
+
+
+def test_prospect_preferences_and_matching(account):
+    apt = account.ok('post', '/units', {'name': 'A1', 'category': 'apartemen', 'unit_type': 'Studio', 'address': 'Kuningan',
+                                        'daily_price': 600_000})
+    account.ok('post', '/units', {'name': 'R1', 'category': 'rumah', 'unit_type': '3 Bedroom', 'address': 'Bintaro',
+                                  'monthly_price': 9_000_000})
+    l = account.ok('post', '/leads', {'name': 'Sinta', 'phone': '0812 3333 4444', 'interest': 'high',
+                                      'pref_category': 'apartemen', 'pref_types': ['apartemen:Studio', 'rumah:3 Bedroom', 'junk'],
+                                      'pref_terms': ['harian', 'mingguan']})
+    # Sizes must belong to the chosen category; unknown terms are dropped.
+    assert l['pref_types'] == ['apartemen:Studio'] and l['pref_terms'] == ['harian']
+    assert l['matched_unit_id'] == apt['id']
+    l2 = account.ok('patch', f"/leads/{l['id']}", {'pref_category': 'keduanya', 'pref_types': ['apartemen:Studio', 'rumah:3 Bedroom']})
+    assert l2['pref_types'] == ['apartemen:Studio', 'rumah:3 Bedroom']
+    names = [x['unit']['name'] for x in l2['suggestions']]
+    assert set(names) >= {'A1', 'R1'}
+    none = account.ok('post', '/leads', {'name': 'Budi', 'phone': '0813'})
+    assert not none.get('pref_category') and not none.get('pref_types') and none['interest'] == 'medium'
+
+
+def test_viewing_needs_at_least_one_unit_and_can_cover_several(account):
+    from datetime import timedelta
+    from models import today_wib
+    a = account.ok('post', '/units', {'name': 'A1', 'category': 'apartemen', 'unit_type': 'Studio', 'address': 'Kuningan', 'monthly_price': 1})
+    b = account.ok('post', '/units', {'name': 'B2', 'category': 'apartemen', 'unit_type': 'Studio', 'address': 'Senopati', 'monthly_price': 1})
+    lid = account.ok('post', '/leads', {'name': 'Eka', 'phone': '0812'})['id']
+    when = (today_wib() + timedelta(days=2)).strftime('%Y-%m-%dT10:00')
+    r = account.post('/viewings', {'lead_id': lid, 'unit_ids': [], 'scheduled_at': when})
+    assert r.status_code == 400
+    v = account.ok('post', '/viewings', {'lead_id': lid, 'unit_ids': [a['id'], b['id'], a['id']], 'scheduled_at': when})
+    assert v['unit_ids'] == [a['id'], b['id']] and v['unit_id'] == a['id']
+    nv = [x for x in account.ok('get', '/leads') if x['id'] == lid][0]['next_viewing']
+    assert nv['unit_name'] == 'A1, B2' and nv['location'] == 'Kuningan; Senopati'
+    lead = account.ok('get', f'/leads/{lid}')
+    assert [u['name'] for u in lead['viewings'][0]['units']] == ['A1', 'B2']
+    # Older clients sending a single unit_id still work.
+    assert account.post('/viewings', {'lead_id': lid, 'unit_id': b['id'], 'scheduled_at': when}).status_code == 200
 
 
 def test_todo_links_schedule_calendar_cancel(account):
@@ -293,3 +335,29 @@ def test_stats_portfolio_numbers_and_units_ranking(account):
     assert [r['name'] for r in st['least_units']][0] == 'Quiet'
     assert all(r['name'] != 'Full' for r in st['least_units'])
     assert account.get('/stats?start=2026-10-05&end=2026-10-01').status_code == 400
+
+
+def test_unit_prices_are_optional_and_priceless_means_renovating(account):
+    u = account.ok('post', '/units', {'name': 'R1'})
+    assert u['status'] == 'maintenance' and not u.get('vacant_since')
+    y = account.ok('post', '/units', {'name': 'Y1', 'yearly_price': 36_000_000})
+    assert y['status'] == 'kosong' and y['yearly_price'] == 36_000_000
+    d = account.ok('post', '/units', {'name': 'D1', 'daily_price': 800_000})
+    assert d['status'] == 'kosong' and d['monthly_price'] == 0
+
+
+def test_prospect_and_tenant_photos(account):
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new('RGB', (30, 30), 'red').save(buf, 'PNG')
+    u = account.ok('post', '/units', {'name': 'P1', 'category': 'rumah', 'unit_type': '2 Bedroom', 'address': 'Depok'})
+    lid = account.ok('post', '/leads', {'name': 'Rina', 'phone': '0812 5555 6666'})['id']
+    tid = account.ok('post', '/tenants', {'name': 'Tono', 'unit_id': u['id'], 'start_date': '2026-01-01', 'monthly_rent': 1})['tenant_id']
+    for kind, i in (('leads', lid), ('tenants', tid)):
+        r = account.c.post(f'/api/{kind}/{i}/photo', headers=account.h, files={'file': ('p.png', buf.getvalue(), 'image/png')})
+        assert r.status_code == 200 and r.json()['photo']
+        assert account.c.get(f"/api/files/{r.json()['photo']}", headers=account.h).status_code == 200
+    assert [x for x in account.ok('get', '/leads') if x['id'] == lid][0]['photo']
+    assert [x for x in account.ok('get', '/tenants') if x['id'] == tid][0]['photo']
+    assert account.c.delete(f'/api/leads/{lid}/photo', headers=account.h).json()['photo'] is None

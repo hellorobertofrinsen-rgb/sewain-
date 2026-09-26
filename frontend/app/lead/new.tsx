@@ -5,12 +5,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ScreenHeader } from "@/src/components/ScreenHeader";
-import { LeadForm, LeadFormValue, emptyLeadForm, formToBody } from "@/src/components/LeadForm";
+import { LeadForm, LeadFormValue, emptyLeadForm, formToBody, leadFormValid } from "@/src/components/LeadForm";
 import { Button, Card, IconCircle, Textarea } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
 import { usePlan } from "@/src/lib/plan";
-import { moneyInput } from "@/src/lib/format";
+import { t } from "@/src/lib/i18n";
 import { parseChat } from "@/src/lib/parseChat";
 import { fonts, makeStyles, spacing } from "@/src/theme";
 
@@ -19,18 +19,14 @@ function fillFrom(form: LeadFormValue, raw: string): { form: LeadFormValue; foun
   const p = parseChat(raw);
   const next = { ...form };
   let found = 0;
-  const put = (k: Exclude<keyof LeadFormValue, "hot">, v?: string) => {
-    if (v && !next[k]) {
-      next[k] = v;
-      found++;
-    }
-  };
-  put("name", p.name);
-  put("phone", p.phone);
-  put("budget", p.budget ? moneyInput(p.budget) : undefined);
-  put("unit_type", p.unit_type);
-  put("preferred_location", p.preferred_location);
-  put("notes", p.notes);
+  if (p.name && !next.name) { next.name = p.name; found++; }
+  if (p.phone && !next.phone) { next.phone = p.phone; found++; }
+  // "studio" can only be an apartment; other sizes are left for the agent to pick.
+  if (p.unit_type === "Studio" && !next.pref_category) {
+    next.pref_category = "apartemen";
+    next.pref_types = ["apartemen:Studio"];
+    found++;
+  }
   return { form: next, found };
 }
 
@@ -68,7 +64,7 @@ export default function NewLead() {
 
   return (
     <View style={s.root}>
-      <ScreenHeader title="Prospek Baru" />
+      <ScreenHeader title={t("Prospek Baru")} />
       <ScrollView contentContainerStyle={[s.body, { paddingBottom: insets.bottom + spacing.xxxl }]} keyboardShouldPersistTaps="handled" testID="new-lead-screen">
         {shared ? (
           <Card style={s.sharedCard} testID="shared-banner">
@@ -78,7 +74,7 @@ export default function NewLead() {
         ) : pasteOpen ? (
           <Card style={{ gap: spacing.md }} testID="paste-card">
             <RNText style={s.pasteTitle}>Tempel chat WhatsApp</RNText>
-            <RNText style={s.intro}>Salin beberapa pesan dari chat prospek, tempel di sini. SewAIn ambil nama, nomor, budget, dan tipe unit.</RNText>
+            <RNText style={s.intro}>Salin beberapa pesan dari chat prospek, tempel di sini. SewAIn ambil nama dan nomornya.</RNText>
             <Textarea testID="paste-chat-input" value={paste} onChangeText={setPaste} placeholder="[26/09 10.21] Jessica: Halo kak, ada studio di PIK 2? Budget 3,5 jt…" />
             <View style={{ flexDirection: "row", gap: spacing.sm }}>
               <Button title="Isi otomatis" icon="zap" onPress={applyPaste} disabled={!paste.trim()} testID="paste-apply-button" style={{ flex: 1 }} />
@@ -88,8 +84,8 @@ export default function NewLead() {
         ) : (
           <Button title="Tempel chat WhatsApp" icon="clipboard" variant="secondary" onPress={() => setPasteOpen(true)} testID="paste-open-button" />
         )}
-        <LeadForm value={f} onChange={setF} startExpanded={!!shared} />
-        <Button title="Simpan Prospek" size="lg" onPress={() => save.mutate()} loading={save.isPending} disabled={!f.name.trim()} testID="lead-save-button" />
+        <LeadForm value={f} onChange={setF} />
+        <Button title="Simpan Prospek" size="lg" onPress={() => save.mutate()} loading={save.isPending} disabled={!leadFormValid(f)} testID="lead-save-button" />
         {isFree && plan ? (
           <RNText style={s.usage}>
             {plan.usage.active_leads}/{plan.limits.max_active_leads} prospek aktif di paket Free

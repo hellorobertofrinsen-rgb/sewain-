@@ -136,7 +136,9 @@ class Property(BaseDocument):
 class Unit(BaseDocument):
     property_id: str
     name: str
+    category: Optional[str] = None  # apartemen | rumah
     unit_type: str = 'Studio'
+    address: Optional[str] = None  # where the unit is (shown in viewing invites and shares)
     city: Optional[str] = None
     monthly_price: int = 0
     deposit: int = 0
@@ -151,6 +153,7 @@ class Unit(BaseDocument):
     owner_name: Optional[str] = None   # pemilik unit (agents manage units owned by others)
     owner_phone: Optional[str] = None
     daily_price: Optional[int] = None  # per night, for units also rented daily
+    yearly_price: Optional[int] = None  # per year
     vacant_since: Optional[datetime] = None
     occupied_since: Optional[datetime] = None
 
@@ -194,11 +197,17 @@ class Lead(BaseDocument):
     first_contact_at: Optional[datetime] = None  # for the response-time metric
     lost_reason: Optional[str] = None
     closed_at: Optional[datetime] = None  # when it became deal / tidak_jadi
+    # What the prospect is looking for (all optional).
+    pref_category: Optional[str] = None  # apartemen | rumah | keduanya
+    pref_types: List[str] = Field(default_factory=list)  # 'apartemen:Studio', 'rumah:2 Bedroom', …
+    pref_terms: List[str] = Field(default_factory=list)  # harian | bulanan | tahunan
+    photo: Optional[str] = None  # uploaded file path
 
 
 class Viewing(BaseDocument):
     lead_id: str
-    unit_id: str
+    unit_id: str  # the first of unit_ids (older viewings only have this)
+    unit_ids: List[str] = Field(default_factory=list)
     scheduled_at: datetime
     note: Optional[str] = None
     status: str = 'menunggu'  # menunggu | terjadwal | selesai | batal
@@ -209,6 +218,7 @@ class Tenant(BaseDocument):
     lead_id: Optional[str] = None
     unit_id: str
     name: str
+    photo: Optional[str] = None  # uploaded file path
     phone: Optional[str] = None
     start_date: str  # YYYY-MM-DD
     end_date: Optional[str] = None

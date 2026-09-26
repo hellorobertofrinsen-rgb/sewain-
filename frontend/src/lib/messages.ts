@@ -1,18 +1,20 @@
 // Ready-to-send WhatsApp messages, built from data SewAIn already has.
 // Plain templates (no AI call): instant, free, and the agent can still edit before sending.
 import { dateLabel, periodLabel, rupiah } from "./format";
+import { prefSummary, unitKind } from "./unitKinds";
 
 function firstName(name?: string | null) {
   return (name || "").trim().split(/\s+/)[0] || "kak";
 }
 
-type UnitInfo = { name: string; unit_type?: string; monthly_price?: number; property_name?: string } | null | undefined;
+type UnitInfo = { name: string; category?: string | null; unit_type?: string; monthly_price?: number; daily_price?: number | null; yearly_price?: number | null } | null | undefined;
 
 export type FollowupLead = {
   name: string;
   status?: string;
-  unit_type?: string | null;
-  budget_max?: number | null;
+  pref_category?: string | null;
+  pref_types?: string[] | null;
+  pref_terms?: string[] | null;
   negotiation?: { agreed_price?: number | null; contract_months?: number | null } | null;
   unit?: UnitInfo;
 };
@@ -20,7 +22,7 @@ export type FollowupLead = {
 export function followupMessage(lead: FollowupLead): string {
   const n = firstName(lead.name);
   const u = lead.unit;
-  const where = u ? `unit ${u.name}${u.property_name ? ` di ${u.property_name}` : ""}` : "";
+  const where = u ? `unit ${u.name}` : "";
   if (lead.status === "negotiation" && u) {
     const price = lead.negotiation?.agreed_price ? ` dengan harga ${rupiah(lead.negotiation.agreed_price)}/bulan` : "";
     const months = lead.negotiation?.contract_months ? ` untuk ${lead.negotiation.contract_months} bulan` : "";
@@ -30,10 +32,13 @@ export function followupMessage(lead: FollowupLead): string {
     return `Halo ${n}, gimana kesannya setelah lihat ${where}? Kalau ada yang mau ditanyakan soal harga atau fasilitas, kabari aja ya 🙂`;
   }
   if (u) {
-    const price = u.monthly_price ? `, harganya ${rupiah(u.monthly_price)}/bulan` : "";
-    return `Halo ${n}, aku mau kabari lagi soal ${where}${u.unit_type ? ` (${u.unit_type})` : ""}${price}. Unitnya masih tersedia. Kalau masih cari, mau aku bantu jadwalkan lihat unitnya minggu ini?`;
+    const price = u.monthly_price ? `, harganya ${rupiah(u.monthly_price)}/bulan`
+      : u.daily_price ? `, harganya ${rupiah(u.daily_price)}/malam`
+      : u.yearly_price ? `, harganya ${rupiah(u.yearly_price)}/tahun` : "";
+    const kind = unitKind(u);
+    return `Halo ${n}, aku mau kabari lagi soal ${where}${kind ? ` (${kind})` : ""}${price}. Unitnya masih tersedia. Kalau masih cari, mau aku bantu jadwalkan lihat unitnya minggu ini?`;
   }
-  const want = [lead.unit_type, lead.budget_max ? `budget sekitar ${rupiah(lead.budget_max)}` : null].filter(Boolean).join(", ");
+  const want = prefSummary(lead);
   return `Halo ${n}, aku mau follow-up soal hunian yang kamu cari${want ? ` (${want})` : ""}. Boleh info lagi lokasi, budget, dan kapan rencana pindahnya? Nanti aku carikan unit yang paling pas.`;
 }
 
@@ -63,10 +68,28 @@ export function mapsLink(location?: string | null): string | null {
   return location ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}` : null;
 }
 
-export type ViewingInfo = { name: string; unit_name: string; scheduled_at: string; location?: string | null };
+export type ViewingInfo = {
+  name: string; unit_name: string; scheduled_at: string; location?: string | null;
+  units?: { name: string; location?: string | null }[]; // one trip, several units
+};
 
 export function viewingInviteMessage(v: ViewingInfo): string {
   const { day, time } = whenParts(v.scheduled_at);
+  if (v.units && v.units.length > 1) {
+    return [
+      `Halo ${firstName(v.name)}, jadwal viewing ${v.units.length} unit:`,
+      `Hari: ${day}`,
+      `Jam: ${time}`,
+      "",
+      ...v.units.flatMap((u, i) => [
+        `${i + 1}. Unit ${u.name}`,
+        u.location ? `   Lokasi: ${u.location}` : null,
+        mapsLink(u.location) ? `   Maps: ${mapsLink(u.location)}` : null,
+      ]),
+      "",
+      "Kalau ada perubahan jadwal, kabari saya ya.",
+    ].filter((x) => x !== null).join("\n");
+  }
   const maps = mapsLink(v.location);
   return [
     `Halo ${firstName(v.name)}, jadwal viewing unit ${v.unit_name}:`,
@@ -77,6 +100,43 @@ export function viewingInviteMessage(v: ViewingInfo): string {
     "",
     "Kalau ada perubahan jadwal, kabari saya ya.",
   ].filter((x) => x !== null).join("\n");
+}
+
+/** Any pre-filled Google Calendar event (opens the Calendar app or site). */
+export function calendarLink(e: { title: string; start: string; minutes?: number; location?: string | null; details?: string }): string {
+  const start = new Date(e.start);
+  const end = new Date(start.getTime() + (e.minutes ?? 60) * 60_000);
+  const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const q = new URLSearchParams({
+    action: "TEMPLATE",
+    text: e.title,
+    dates: `${fmt(start)}/${fmt(end)}`,
+    details: e.details || "",
+    location: e.location || "",
+  });
+  return `https://calendar.google.com/calendar/render?${q.toString()}`;
+}
+
+export type TodoInfo = { description: string; unit_name?: string | null; tenant_name?: string | null; scheduled_at: string; location?: string | null };
+
+export function todoCalendarLink(td: TodoInfo): string {
+  return calendarLink({
+    title: `${td.description}${td.unit_name ? ` · ${td.unit_name}` : ""}`,
+    start: td.scheduled_at,
+    location: td.location,
+    details: [td.tenant_name ? `Tenant: ${td.tenant_name}` : null, td.unit_name ? `Unit: ${td.unit_name}` : null].filter(Boolean).join("\n"),
+  });
+}
+
+export function todoInformMessage(td: TodoInfo): string {
+  const { day, time } = whenParts(td.scheduled_at);
+  return [
+    `Halo ${firstName(td.tenant_name)}, soal ${td.description.toLowerCase()}${td.unit_name ? ` di unit ${td.unit_name}` : ""} sudah saya jadwalkan:`,
+    `Hari: ${day}`,
+    `Jam: ${time}`,
+    "",
+    "Kalau waktunya tidak cocok, kabari saya ya.",
+  ].join("\n");
 }
 
 /** Google Calendar "add event" link, pre-filled; opens the Calendar app or site. */
@@ -95,25 +155,54 @@ export function googleCalendarLink(v: ViewingInfo & { phone?: string | null }, m
 }
 
 export type ShareUnit = {
-  name: string; unit_type?: string; location?: string | null; monthly_price?: number; deposit?: number;
+  name: string; category?: string | null; unit_type?: string; location?: string | null; monthly_price?: number; deposit?: number;
+  daily_price?: number | null; yearly_price?: number | null;
   bedrooms?: number; bathrooms?: number; furnished?: boolean; facilities?: string[]; status?: string; available_date?: string | null;
 };
 
 export function unitShareMessage(u: ShareUnit): string {
-  const rooms = [u.bedrooms ? `${u.bedrooms} kamar tidur` : null, u.bathrooms ? `${u.bathrooms} kamar mandi` : null, u.furnished ? "furnished" : null]
+  // Newer units say it in their type ("Rumah · 3 Bedroom"); older ones listed rooms separately.
+  const rooms = u.category ? "" : [u.bedrooms ? `${u.bedrooms} kamar tidur` : null, u.bathrooms ? `${u.bathrooms} kamar mandi` : null, u.furnished ? "furnished" : null]
     .filter(Boolean).join(", ");
+  const kind = unitKind(u);
   const status = u.status === "kosong" ? "Kosong, bisa langsung ditempati."
     : u.status === "reserved" && u.available_date ? `Tersedia mulai ${dateLabel(u.available_date + "T00:00:00")}.`
     : u.status === "terisi" ? "Saat ini masih terisi." : null;
   return [
-    `Unit ${u.name}${u.unit_type ? ` (${u.unit_type})` : ""}`,
+    `Unit ${u.name}${kind ? ` (${kind})` : ""}`,
     u.location || null,
-    u.monthly_price ? `Sewa ${rupiah(u.monthly_price)}/bulan${u.deposit ? `, deposit ${rupiah(u.deposit)}` : ""}` : null,
+    u.monthly_price ? `Sewa ${rupiah(u.monthly_price)}/bulan` : null,
+    u.yearly_price ? `Sewa ${rupiah(u.yearly_price)}/tahun` : null,
+    u.daily_price ? `Harian ${rupiah(u.daily_price)}/malam` : null,
+    u.deposit ? `Deposit ${rupiah(u.deposit)}` : null,
     rooms || null,
     u.facilities?.length ? `Fasilitas: ${u.facilities.join(", ")}` : null,
     status,
     "",
     "Mau lihat unitnya? Balas pesan ini, nanti saya atur jadwal viewing.",
+  ].filter((x) => x !== null).join("\n");
+}
+
+export type BankAccount = { bank: string; account: string; holder?: string | null };
+
+export function invoiceMessage(
+  p: { name: string; unit_name: string; amount: number; due_date: string; period?: string; months?: number },
+  bank: BankAccount,
+  from?: { name?: string | null; agency?: string | null },
+): string {
+  const sign = [from?.name, from?.agency].filter(Boolean).join(" · ");
+  return [
+    `Halo ${firstName(p.name)}, berikut tagihan sewa unit ${p.unit_name}:`,
+    p.period ? `Periode: ${periodLabel(p.period, p.months)}` : null,
+    `Jumlah: ${rupiah(p.amount)}`,
+    `Jatuh tempo: ${dateLabel(p.due_date + "T00:00:00")}`,
+    "",
+    "Transfer ke:",
+    `${bank.bank} ${bank.account}`,
+    bank.holder ? `a.n. ${bank.holder}` : null,
+    "",
+    "Kalau sudah transfer, kirim buktinya di sini ya. Terima kasih.",
+    sign ? `\n${sign}` : null,
   ].filter((x) => x !== null).join("\n");
 }
 

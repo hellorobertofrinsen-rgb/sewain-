@@ -1,32 +1,38 @@
 import React, { useState } from "react";
 import { Tabs, router, usePathname } from "expo-router";
-import { Platform, Text as RNText, useWindowDimensions, View } from "react-native";
+import { Linking, Platform, ScrollView, Text as RNText, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon, IconName } from "@/src/components/Icon";
 import { LogoFull } from "@/src/components/Logo";
 import { Sheet } from "@/src/components/Sheet";
+import { Drawer } from "@/src/components/Drawer";
+import { MyAvatar } from "@/src/components/Avatar";
 import { IconCircle, PressableScale, StatusPill, Tone } from "@/src/components/ui";
 import { useAuth } from "@/src/lib/auth";
 import { usePlan } from "@/src/lib/plan";
+import { MenuCtx } from "@/src/lib/menu";
+import { t } from "@/src/lib/i18n";
 import { cardShadow, fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { STATE_TRANSITION } from "@/src/motion";
 
-// Phone: four tabs around a central "+" (quick add). Masalah and Laporan are one tap
-// away from Hari Ini; on desktop everything sits in the sidebar.
+const SUPPORT_WA = "6282122232421";
+
+// Phone: four tabs around a central "+" (quick add); everything else (Laporan,
+// To-do, Cetak Testimoni, Pengaturan) is in the ☰ menu on Home. Desktop: all of it
+// sits in the sidebar.
 const TABS: { name: string; label: string; icon: IconName }[] = [
-  { name: "today", label: "Hari Ini", icon: "home" },
+  { name: "today", label: "Home", icon: "home" },
   { name: "units", label: "Unit", icon: "building" },
   { name: "leads", label: "Prospek", icon: "person" },
   { name: "tenants", label: "Tenant", icon: "key" },
 ];
 
-const SIDEBAR: { path: string; label: string; icon: IconName }[] = [
-  { path: "/today", label: "Hari Ini", icon: "home" },
-  { path: "/units", label: "Unit", icon: "building" },
-  { path: "/leads", label: "Prospek", icon: "person" },
-  { path: "/tenants", label: "Tenant", icon: "key" },
-  { path: "/maintenance", label: "Masalah", icon: "wrench" },
-  { path: "/laporan", label: "Laporan", icon: "chart" },
+// Items in the ☰ menu (and the lower part of the desktop sidebar).
+const MORE: { path: string; label: string; icon: IconName; testID: string }[] = [
+  { path: "/laporan", label: "Laporan", icon: "chart", testID: "laporan" },
+  { path: "/todo", label: "To-do list", icon: "list-check", testID: "todo" },
+  { path: "/testimoni", label: "Cetak Testimoni", icon: "image", testID: "testimoni" },
+  { path: "/settings", label: "Pengaturan", icon: "sliders", testID: "settings" },
 ];
 
 // ------------------------------ Quick add ---------------------------------------
@@ -35,7 +41,7 @@ const QUICK: { key: string; label: string; sub: string; icon: IconName; tone: To
   { key: "lead", label: "Prospek baru", sub: "Orang yang tanya unit", icon: "person", tone: "brand", go: "/lead/new" },
   { key: "unit", label: "Unit baru", sub: "Listing yang kamu pasarkan", icon: "building", tone: "info", go: "/units?add=1" },
   { key: "tenant", label: "Tenant baru", sub: "Penyewa yang sudah tanda tangan", icon: "key", tone: "success", go: "/tenants?add=1" },
-  { key: "issue", label: "Lapor masalah", sub: "Komplain atau kerusakan unit", icon: "wrench", tone: "warning", go: "/maintenance?report=1" },
+  { key: "todo", label: "To-do baru", sub: "Kendala unit atau permintaan tenant", icon: "list-check", tone: "warning", go: "/todo?add=1" },
 ];
 
 function QuickAddSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -48,19 +54,80 @@ function QuickAddSheet({ open, onClose }: { open: boolean; onClose: () => void }
     router.push(q.go as any);
   };
   return (
-    <Sheet visible={open} onClose={onClose} title="Tambah cepat" testID="quick-add-sheet">
+    <Sheet visible={open} onClose={onClose} title={t("Tambah cepat")} testID="quick-add-sheet">
       <View style={{ gap: spacing.sm }}>
         {QUICK.map((q) => (
           <PressableScale soft key={q.key} testID={`quick-add-${q.key}`} onPress={() => pick(q)} style={s.quickRow}>
             <IconCircle icon={q.icon} tone={q.tone} size={44} />
             <View style={{ flex: 1, gap: 2 }}>
-              <RNText style={s.quickLabel}>{q.label}</RNText>
-              <RNText style={s.quickSub}>{q.sub}</RNText>
+              <RNText style={s.quickLabel}>{t(q.label)}</RNText>
+              <RNText style={s.quickSub}>{t(q.sub)}</RNText>
             </View>
           </PressableScale>
         ))}
       </View>
     </Sheet>
+  );
+}
+
+// ------------------------------ ☰ menu (phone) -----------------------------------
+
+function MainMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const { user, logout } = useAuth();
+  const go = (path: string) => {
+    onClose();
+    router.push(path as any);
+  };
+  return (
+    <Drawer open={open} onClose={onClose} testID="main-menu">
+      <ScrollView contentContainerStyle={s.menuBody} showsVerticalScrollIndicator={false}>
+        <PressableScale soft testID="menu-profile" onPress={() => go("/profile")} style={s.menuProfile}>
+          <MyAvatar size={56} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <RNText style={s.menuName} numberOfLines={1}>{user?.name || "-"}</RNText>
+            <RNText style={s.menuSub} numberOfLines={1}>{user?.agency || t("Lihat & isi profil")}</RNText>
+          </View>
+          <Icon name="chevron-right" size={18} color={colors.borderStrong} />
+        </PressableScale>
+
+        <View style={s.menuList}>
+          {MORE.map((m) => (
+            <PressableScale soft key={m.path} testID={`menu-${m.testID}`} onPress={() => go(m.path)} style={s.menuItem}>
+              <Icon name={m.icon} size={22} color={colors.onSurface} strokeWidth={1.7} />
+              <RNText style={s.menuLabel}>{t(m.label)}</RNText>
+            </PressableScale>
+          ))}
+          <PressableScale
+            soft
+            testID="menu-help"
+            onPress={() => {
+              onClose();
+              Linking.openURL(`https://wa.me/${SUPPORT_WA}?text=${encodeURIComponent(t("Halo SewAIn, saya butuh bantuan. Email akun: {email}", { email: user?.email }))}`);
+            }}
+            style={s.menuItem}
+          >
+            <Icon name="whatsapp" size={22} color={colors.onSurface} strokeWidth={1.7} />
+            <RNText style={s.menuLabel}>{t("Bantuan WhatsApp")}</RNText>
+          </PressableScale>
+        </View>
+
+        <View style={{ flex: 1, minHeight: spacing.xl }} />
+        <PressableScale
+          soft
+          testID="menu-logout"
+          onPress={() => {
+            onClose();
+            logout();
+          }}
+          style={[s.menuItem, s.menuLogout]}
+        >
+          <Icon name="logout" size={22} color={colors.error} strokeWidth={1.7} />
+          <RNText style={[s.menuLabel, { color: colors.error }]}>{t("Keluar")}</RNText>
+        </PressableScale>
+      </ScrollView>
+    </Drawer>
   );
 }
 
@@ -73,20 +140,20 @@ function TabBar({ state, navigation, onAdd }: BottomTabBarProps & { onAdd: () =>
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const current = state.routes[state.index]?.name;
-  const tab = (t: (typeof TABS)[number]) => {
-    const active = current === t.name;
+  const tab = (tb: (typeof TABS)[number]) => {
+    const active = current === tb.name;
     return (
       <PressableScale
-        key={t.name}
+        key={tb.name}
         role="tab"
-        testID={`tab-${t.name}`}
+        testID={`tab-${tb.name}`}
         accessibilityState={{ selected: active }}
-        accessibilityLabel={t.label}
-        onPress={() => navigation.navigate(t.name as never)}
+        accessibilityLabel={t(tb.label)}
+        onPress={() => navigation.navigate(tb.name as never)}
         style={s.tab}
       >
-        <Icon name={t.icon} size={25} color={active ? colors.brandPrimary : colors.muted} strokeWidth={active ? 1.9 : 1.6} />
-        <RNText style={[s.tabLabel, active && s.tabLabelActive]}>{t.label}</RNText>
+        <Icon name={tb.icon} size={25} color={active ? colors.brandPrimary : colors.muted} strokeWidth={active ? 1.9 : 1.6} />
+        <RNText style={[s.tabLabel, active && s.tabLabelActive]}>{t(tb.label)}</RNText>
       </PressableScale>
     );
   };
@@ -94,7 +161,7 @@ function TabBar({ state, navigation, onAdd }: BottomTabBarProps & { onAdd: () =>
     <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 8) }]} testID="tab-bar">
       {TABS.slice(0, 2).map(tab)}
       <View style={s.tab}>
-        <PressableScale testID="tab-add" accessibilityLabel="Tambah cepat" onPress={onAdd} style={s.addBtn}>
+        <PressableScale testID="tab-add" accessibilityLabel={t("Tambah cepat")} onPress={onAdd} style={s.addBtn}>
           <Icon name="plus" size={26} color={colors.onBrandPrimary} strokeWidth={2.4} />
         </PressableScale>
       </View>
@@ -111,51 +178,49 @@ function Sidebar({ onAdd }: { onAdd: () => void }) {
   const { plan, showUpgrade } = usePlan();
   const { colors } = useTheme();
   const s = useStyles();
-  const initial = (user?.name || "S").charAt(0).toUpperCase();
   const isActive = (path: string) => pathname === path || pathname.startsWith(path + "/");
 
   return (
     <View style={s.sidebar} testID="web-sidebar">
       <View style={s.logoBox}>
-        <LogoFull size={26} />
+        <LogoFull size={28} />
       </View>
       <PressableScale testID="sidebar-add" onPress={onAdd} style={s.sidebarAdd}>
         <Icon name="plus" size={18} color={colors.onBrandPrimary} strokeWidth={2.4} />
-        <RNText style={s.sidebarAddText}>Tambah</RNText>
+        <RNText style={s.sidebarAddText}>{t("Tambah")}</RNText>
       </PressableScale>
-      <View style={{ gap: 4, paddingHorizontal: spacing.md }}>
-        {SIDEBAR.map((t) => (
-          <NavItem key={t.path} path={t.path} label={t.label} icon={t.icon} testID={`nav-${t.path.slice(1)}`} active={isActive(t.path)} />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 4, paddingHorizontal: spacing.md }}>
+        {TABS.map((tb) => (
+          <NavItem key={tb.name} path={`/${tb.name}`} label={t(tb.label)} icon={tb.icon} testID={`nav-${tb.name}`} active={isActive(`/${tb.name}`)} />
         ))}
         <View style={s.divider} />
-        <NavItem path="/settings" label="Pengaturan" icon="sliders" testID="nav-settings" active={isActive("/settings")} />
-      </View>
-      <View style={{ flex: 1 }} />
+        {MORE.map((m) => (
+          <NavItem key={m.path} path={m.path} label={t(m.label)} icon={m.icon} testID={`nav-${m.testID}`} active={isActive(m.path)} />
+        ))}
+      </ScrollView>
       {plan && (plan.plan === "free" || plan.trial) ? (
         <PressableScale soft testID="sidebar-upgrade" onPress={() => showUpgrade("general")} style={s.upgrade}>
-          <RNText style={s.upgradeTitle}>{plan.trial ? `Trial Premium · ${plan.trial_days_left} hari lagi` : "Paket Free"}</RNText>
+          <RNText style={s.upgradeTitle}>{plan.trial ? t("Trial Premium · {n} hari lagi", { n: plan.trial_days_left }) : t("Paket Free")}</RNText>
           <RNText style={s.upgradeSub}>
             {plan.trial
-              ? "Setelah trial: 3 unit & 20 prospek aktif."
-              : `${plan.usage.units}/${plan.limits.max_units} unit · ${plan.usage.active_leads}/${plan.limits.max_active_leads} prospek aktif`}
+              ? t("Setelah trial: 3 unit & 20 prospek aktif.")
+              : t("{u}/{mu} unit · {l}/{ml} prospek aktif", { u: plan.usage.units, mu: plan.limits.max_units, l: plan.usage.active_leads, ml: plan.limits.max_active_leads })}
           </RNText>
-          <RNText style={s.upgradeCta}>Lihat Premium →</RNText>
+          <RNText style={s.upgradeCta}>{t("Lihat Premium →")}</RNText>
         </PressableScale>
       ) : null}
-      <View style={s.userBox}>
-        <View style={s.avatar}>
-          <RNText style={s.avatarText}>{initial}</RNText>
-        </View>
+      <PressableScale soft testID="sidebar-profile" onPress={() => router.push("/profile" as any)} style={s.userBox}>
+        <MyAvatar size={40} />
         <View style={{ flex: 1, gap: 1 }}>
           <RNText numberOfLines={1} style={s.userName}>{user?.name || "-"}</RNText>
-          <RNText numberOfLines={1} style={s.userEmail}>{user?.email || ""}</RNText>
+          <RNText numberOfLines={1} style={s.userEmail}>{user?.agency || user?.email || ""}</RNText>
         </View>
         {user?.is_demo ? (
           <StatusPill label="Demo" tone="warning" testID="demo-badge-sidebar" />
         ) : plan?.plan === "premium" && !plan.trial ? (
           <StatusPill label="Premium" tone="brand" testID="premium-badge-sidebar" />
         ) : null}
-      </View>
+      </PressableScale>
     </View>
   );
 }
@@ -185,22 +250,24 @@ export default function TabsLayout() {
   const { width } = useWindowDimensions();
   const wideWeb = Platform.OS === "web" && width >= 1024;
   const [quickOpen, setQuickOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const { colors } = useTheme();
   const tabs = (
     <Tabs
       screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.surface } } as any}
       tabBar={(props) => (wideWeb ? null : <TabBar {...props} onAdd={() => setQuickOpen(true)} />)}
     >
-      <Tabs.Screen name="today" options={{ title: "Hari Ini" }} />
-      <Tabs.Screen name="units" options={{ title: "Unit" }} />
-      <Tabs.Screen name="leads" options={{ title: "Prospek" }} />
-      <Tabs.Screen name="tenants" options={{ title: "Tenant" }} />
-      <Tabs.Screen name="maintenance" options={{ title: "Masalah" }} />
-      <Tabs.Screen name="laporan" options={{ title: "Laporan" }} />
+      <Tabs.Screen name="today" options={{ title: t("Home") }} />
+      <Tabs.Screen name="units" options={{ title: t("Unit") }} />
+      <Tabs.Screen name="leads" options={{ title: t("Prospek") }} />
+      <Tabs.Screen name="tenants" options={{ title: t("Tenant") }} />
+      <Tabs.Screen name="todo" options={{ title: t("To-do list") }} />
+      <Tabs.Screen name="laporan" options={{ title: t("Laporan") }} />
+      <Tabs.Screen name="testimoni" options={{ title: t("Cetak Testimoni") }} />
     </Tabs>
   );
   return (
-    <>
+    <MenuCtx.Provider value={{ openMenu: () => setMenuOpen(true) }}>
       {wideWeb ? (
         <View style={{ flex: 1, flexDirection: "row" }}>
           <Sidebar onAdd={() => setQuickOpen(true)} />
@@ -210,7 +277,8 @@ export default function TabsLayout() {
         tabs
       )}
       <QuickAddSheet open={quickOpen} onClose={() => setQuickOpen(false)} />
-    </>
+      <MainMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
+    </MenuCtx.Provider>
   );
 }
 
@@ -248,6 +316,14 @@ const useStyles = makeStyles((colors) => ({
   },
   quickLabel: { color: colors.onSurface, ...fonts.semibold, fontSize: 17 },
   quickSub: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 14 },
+  menuBody: { flexGrow: 1, padding: spacing.lg, paddingTop: spacing.xl, gap: spacing.lg },
+  menuProfile: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, borderRadius: 20, backgroundColor: colors.surface },
+  menuName: { color: colors.onSurface, ...fonts.bold, fontSize: 18 },
+  menuSub: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 14 },
+  menuList: { gap: 4 },
+  menuItem: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.md, minHeight: 54, borderRadius: 16 },
+  menuLabel: { color: colors.onSurface, ...fonts.medium, fontSize: 17 },
+  menuLogout: { borderTopWidth: 1, borderTopColor: colors.divider, borderRadius: 0, marginTop: spacing.sm },
   sidebar: {
     width: 264,
     backgroundColor: colors.surfaceSecondary,
@@ -302,15 +378,6 @@ const useStyles = makeStyles((colors) => ({
     padding: spacing.sm,
     borderRadius: 16,
   },
-  avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.brandPrimary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { color: colors.onBrandPrimary, ...fonts.semibold, fontSize: 16 },
   userName: { color: colors.onSurface, ...fonts.semibold, fontSize: 14 },
   userEmail: { color: colors.muted, ...fonts.regular, fontSize: 12 },
 }));

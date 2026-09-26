@@ -13,10 +13,11 @@ from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 from auth_utils import ALGORITHM, SECRET, bearer, current_account, account_id
-from database import properties, units, leads, viewings, tenants, payments, maintenance, activities, bookings
+from database import properties, units, leads, viewings, tenants, payments, maintenance, activities, bookings, files
 from helpers import (PAYMENT_INTERVALS, log_activity_async, generate_payments, days_late, days_since,
                      parse_date, oid, contract_end, period_label)
-from matching import AUTO_MATCH_MIN_SCORE, guess_issue_category, match_score, rank_units
+from matching import (AUTO_MATCH_MIN_SCORE, TYPES_BY_CATEGORY, UNIT_CATEGORIES, clean_prefs,
+                      guess_issue_category, match_score, rank_units)
 from models import Booking, Property, Unit, Lead, Viewing, Tenant, Maintenance, now_utc, today_wib, local_tz
 from plans import (CLOSED_LEAD_STATUSES, ensure_can_create_lead, ensure_can_create_units,
                    require_feature, unit_query)
@@ -48,7 +49,8 @@ async def _visible_units(user: dict, **extra) -> list[dict]:
 def unit_location(u: dict, pmap: dict) -> str:
     """Where the unit is, from what the agent entered: property, address, area, city."""
     p = pmap.get(u.get('property_id') or '', {}) if u else {}
-    parts = [p.get('name'), p.get('address'), p.get('area'), p.get('city') or (u or {}).get('city')]
+    pname = p.get('name') if p.get('name') != DEFAULT_PROPERTY else None
+    parts = [(u or {}).get('address'), pname, p.get('address'), p.get('area'), p.get('city') or (u or {}).get('city')]
     seen: list[str] = []
     for x in parts:
         if x and x.strip() and x.strip() not in seen:
@@ -67,8 +69,9 @@ def unit_out(u: dict, pmap: dict) -> dict:
 
 
 def unit_brief(u: dict, pmap: dict | None = None) -> dict:
-    return {'id': str(u['_id']), 'name': u['name'], 'unit_type': u.get('unit_type', ''),
-            'monthly_price': u.get('monthly_price', 0), 'status': u.get('status'),
+    return {'id': str(u['_id']), 'name': u['name'], 'category': u.get('category'), 'unit_type': u.get('unit_type', ''),
+            'monthly_price': u.get('monthly_price', 0), 'daily_price': u.get('daily_price'),
+            'yearly_price': u.get('yearly_price'), 'status': u.get('status'),
             'property_name': ((pmap or {}).get(u.get('property_id') or '') or {}).get('name', '')}
 
 
@@ -168,6 +171,8 @@ class UnitIn(BaseModel):
     property_id: str | None = None
     property_name: str | None = Field(default=None, max_length=120)  # creates the property if new
     name: str = Field(min_length=1, max_length=60)
+    category: str | None = None  # apartemen | rumah
+    address: str | None = Field(default=None, max_length=200)
     unit_type: str = 'Studio'
     monthly_price: int = Field(default=0, ge=0)
     deposit: int = Field(default=0, ge=0)
@@ -181,11 +186,14 @@ class UnitIn(BaseModel):
     owner_name: str | None = Field(default=None, max_length=80)
     owner_phone: str | None = Field(default=None, max_length=40)
     daily_price: int | None = Field(default=None, ge=0)
+    yearly_price: int | None = Field(default=None, ge=0)
 
 
 class UnitPatch(BaseModel):
     property_id: str | None = None
     name: str | None = Field(default=None, min_length=1, max_length=60)
+    category: str | None = None
+    address: str | None = Field(default=None, max_length=200)
     unit_type: str | None = None
     monthly_price: int | None = Field(default=None, ge=0)
     deposit: int | None = Field(default=None, ge=0)
@@ -199,9 +207,20 @@ class UnitPatch(BaseModel):
     owner_name: str | None = Field(default=None, max_length=80)
     owner_phone: str | None = Field(default=None, max_length=40)
     daily_price: int | None = Field(default=None, ge=0)
+    yearly_price: int | None = Field(default=None, ge=0)
 
 
 DEFAULT_PROPERTY = 'Properti utama'
+
+
+def _check_unit_kind(category: str | None, unit_type: str | None) -> None:
+    """A unit is an apartment or a house, with a size from that category's list."""
+    if category is None:
+        return
+    if category not in UNIT_CATEGORIES:
+        raise HTTPException(400, 'Jenis unit harus Apartemen atau Rumah')
+    if unit_type not in TYPES_BY_CATEGORY[category]:
+        raise HTTPException(400, 'Tipe unit tidak sesuai jenisnya')
 
 
 async def _resolve_property(aid: str, property_id: str | None, property_name: str | None) -> dict:
@@ -212,11 +231,7 @@ async def _resolve_property(aid: str, property_id: str | None, property_name: st
         if not p:
             raise HTTPException(404, 'Properti tidak ditemukan')
         return p
-    name = (property_name or '').strip()
-    if not name:
-        if pmap:  # the most recently added property
-            return sorted(pmap.values(), key=lambda x: x.get('created_at') or now_utc())[-1]
-        name = DEFAULT_PROPERTY
+    name = (property_name or '').strip() or DEFAULT_PROPERTY
     for p in pmap.values():
         if p.get('name', '').strip().lower() == name.lower():
             return p
@@ -245,14 +260,18 @@ async def create_unit(body: UnitIn, user: dict = Depends(current_account)):
     aid = account_id(user)
     if body.status not in UNIT_STATUSES:
         raise HTTPException(400, 'Status unit tidak valid')
+    _check_unit_kind(body.category, body.unit_type)
     await ensure_can_create_units(user)
     p = await _resolve_property(aid, body.property_id, body.property_name)
     pmap = await _props_map(aid)
     data = body.model_dump(exclude={'property_name'}) | {'property_id': str(p['_id'])}
+    # No price of any kind yet: the unit isn't on the market, so it shows as "Renovating…".
+    if not (body.monthly_price or body.daily_price or body.yearly_price) and body.status == 'kosong':
+        data['status'] = 'maintenance'
     u = Unit(account_id=aid, **data)
     u.city = p.get('city')
     u.available_date = _check_date(body.available_date, 'Tanggal available')
-    if body.status == 'kosong':
+    if u.status == 'kosong':
         u.vacant_since = now_utc()
     await units.insert_one(u.to_mongo())
     await log_activity_async(aid, 'unit_added', 'unit', f'Menambahkan unit {u.name}', u.id)
@@ -276,6 +295,8 @@ async def update_unit(uid: str, body: UnitPatch, user: dict = Depends(current_ac
     aid = account_id(user)
     old = await _get_visible_unit(user, uid)
     data = body.model_dump(exclude_unset=True)
+    if 'category' in data or 'unit_type' in data:
+        _check_unit_kind(data.get('category', old.get('category')), data.get('unit_type', old.get('unit_type')))
     if 'status' in data and data['status'] not in UNIT_STATUSES:
         raise HTTPException(400, 'Status unit tidak valid')
     if 'property_id' in data:
@@ -342,42 +363,85 @@ async def import_units_csv(body: dict, user: dict = Depends(current_account)):
         raise HTTPException(400, 'CSV kosong')
     rows = list(csv.DictReader(io.StringIO(text)))
     await ensure_can_create_units(user, len(rows))
-    pmap = await _props_map(aid)
-    imported, errors, props_created = 0, [], 0
+    holder = await _resolve_property(aid, None, None)
+    kinds = {'apartemen': 'apartemen', 'apartment': 'apartemen', 'apt': 'apartemen', 'rumah': 'rumah', 'house': 'rumah'}
+    imported, errors = 0, []
     for i, row in enumerate(rows, start=2):
         row = {(k or '').strip().lower(): (v or '').strip() for k, v in row.items() if isinstance(v, str) or v is None}
         name = row.get('name') or row.get('nama')
-        prop_name = row.get('property') or row.get('properti')
-        if not name or not prop_name:
-            errors.append(f'Baris {i}: kolom name/property wajib diisi')
+        category = kinds.get((row.get('jenis') or row.get('category') or '').lower())
+        unit_type = _norm_size(row.get('tipe') or row.get('unit_type') or '')
+        address = row.get('alamat') or row.get('address') or row.get('lokasi')
+        if not name or not category or not address:
+            errors.append(f'Baris {i}: kolom nama, jenis (apartemen/rumah), dan alamat wajib diisi')
             continue
-        prop = next((p for p in pmap.values() if p['name'].lower() == prop_name.lower()), None)
-        if not prop:
-            prop_doc = Property(account_id=aid, name=prop_name, type=row.get('type_properti') or 'apartment',
-                                city=row.get('city') or row.get('kota'))
-            prop = prop_doc.to_mongo()
-            await properties.insert_one(prop)
-            pmap[prop_doc.id] = prop
-            props_created += 1
+        if unit_type not in TYPES_BY_CATEGORY[category]:
+            errors.append(f'Baris {i}: tipe "{row.get("tipe") or row.get("unit_type") or ""}" tidak ada untuk {category}')
+            continue
+        monthly = _csv_int(row.get('harga_bulanan') or row.get('monthly_price') or row.get('harga'))
+        daily = _csv_int(row.get('harga_harian') or row.get('daily_price')) or None
+        yearly = _csv_int(row.get('harga_tahunan') or row.get('yearly_price')) or None
         status = {'vacant': 'kosong', 'occupied': 'terisi', 'kosong': 'kosong', 'terisi': 'terisi',
                   'reserved': 'reserved', 'maintenance': 'maintenance',
                   'perbaikan': 'maintenance'}.get((row.get('status') or 'kosong').lower(), 'kosong')
-        u = Unit(account_id=aid, property_id=str(prop['_id']), name=name, city=prop.get('city'),
-                 unit_type=row.get('unit_type') or row.get('tipe') or 'Studio',
-                 monthly_price=_csv_int(row.get('monthly_price') or row.get('harga')),
-                 deposit=_csv_int(row.get('deposit')), bedrooms=_csv_int(row.get('bedrooms'), 1) or 1,
-                 bathrooms=_csv_int(row.get('bathrooms'), 1) or 1,
-                 furnished=(row.get('furnished', 'ya').lower() not in ('tidak', 'no', 'n', 'unfurnished', '0')),
-                 facilities=[f.strip() for f in re.split(r'[;,]', row.get('facilities') or row.get('fasilitas') or '') if f.strip()],
-                 available_date=parse_date(row.get('available_date')).isoformat() if parse_date(row.get('available_date')) else None,
-                 status=status, notes=row.get('notes') or row.get('catatan') or None,
-                 owner_name=row.get('owner_name') or row.get('pemilik') or None,
-                 owner_phone=row.get('owner_phone') or row.get('hp_pemilik') or None,
+        if not (monthly or daily or yearly) and status == 'kosong':
+            status = 'maintenance'  # no price yet: "Renovating…"
+        u = Unit(account_id=aid, property_id=str(holder['_id']), name=name, category=category, unit_type=unit_type,
+                 address=address, monthly_price=monthly, daily_price=daily, yearly_price=yearly,
+                 bedrooms=1 if unit_type == 'Studio' else int(unit_type[0]), status=status,
                  vacant_since=now_utc() if status == 'kosong' else None)
         await units.insert_one(u.to_mongo())
         imported += 1
     await log_activity_async(aid, 'units_imported', 'unit', f'Impor {imported} unit dari CSV')
-    return {'imported': imported, 'properties_created': props_created, 'errors': errors}
+    return {'imported': imported, 'errors': errors}
+
+
+def _norm_size(v: str) -> str:
+    """'studio', '2br', '2 kamar' -> the size names used in the app."""
+    x = v.strip().lower()
+    if x == 'studio':
+        return 'Studio'
+    m = re.match(r'^(\d)\s*(bedroom|br|kamar|kt|kamar tidur)?$', x)
+    return f'{m.group(1)} Bedroom' if m else v.strip()
+
+
+async def _set_person_photo(coll, doc: dict, aid: str, file: UploadFile | None) -> str | None:
+    """Replace (or with file=None remove) the photo of a prospect or tenant."""
+    path = None
+    if file is not None:
+        from storage import save_photo
+        try:
+            path = await save_photo(aid, file)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+    await coll.update_one({'_id': doc['_id']}, {'$set': {'photo': path}})
+    if doc.get('photo'):
+        await files.delete_one({'path': doc['photo'], 'owner_id': aid})
+    return path
+
+
+@router.post('/leads/{lid}/photo')
+async def upload_lead_photo(lid: str, file: UploadFile, user: dict = Depends(current_account)):
+    aid = account_id(user)
+    return {'photo': await _set_person_photo(leads, await _get_lead(aid, lid), aid, file)}
+
+
+@router.delete('/leads/{lid}/photo')
+async def delete_lead_photo(lid: str, user: dict = Depends(current_account)):
+    aid = account_id(user)
+    return {'photo': await _set_person_photo(leads, await _get_lead(aid, lid), aid, None)}
+
+
+@router.post('/tenants/{tid}/photo')
+async def upload_tenant_photo(tid: str, file: UploadFile, user: dict = Depends(current_account)):
+    aid = account_id(user)
+    return {'photo': await _set_person_photo(tenants, await _get_tenant(aid, tid), aid, file)}
+
+
+@router.delete('/tenants/{tid}/photo')
+async def delete_tenant_photo(tid: str, user: dict = Depends(current_account)):
+    aid = account_id(user)
+    return {'photo': await _set_person_photo(tenants, await _get_tenant(aid, tid), aid, None)}
 
 
 @router.post('/units/{uid}/photos')
@@ -479,6 +543,9 @@ class LeadIn(BaseModel):
     interest: str = 'medium'
     notes: str | None = Field(default=None, max_length=2000)
     next_followup_date: str | None = None
+    pref_category: str | None = None
+    pref_types: list[str] = Field(default_factory=list)
+    pref_terms: list[str] = Field(default_factory=list)
 
 
 class LeadPatch(BaseModel):
@@ -495,9 +562,13 @@ class LeadPatch(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
     next_followup_date: str | None = None
     matched_unit_id: str | None = None
+    pref_category: str | None = None
+    pref_types: list[str] | None = None
+    pref_terms: list[str] | None = None
 
 
-LEAD_CRITERIA = {'budget_min', 'budget_max', 'preferred_location', 'unit_type', 'requirements'}
+LEAD_CRITERIA = {'budget_min', 'budget_max', 'preferred_location', 'unit_type', 'requirements',
+                 'pref_category', 'pref_types', 'pref_terms'}
 
 
 async def _get_lead(aid: str, lid: str) -> dict:
@@ -556,10 +627,8 @@ async def list_leads(status: str | None = None, user: dict = Depends(current_acc
         d['next_viewing_at'] = _iso(next_v.get(d['id']))
         nv = next_doc.get(d['id'])
         if nv:
-            u = umap.get(nv.get('unit_id') or '') or {}
-            d['next_viewing'] = {'id': str(nv['_id']), 'at': _iso(next_v[d['id']]), 'unit_name': u.get('name', '-'),
-                                 'location': unit_location(u, pmap) if u else '',
-                                 'calendar_added': bool(nv.get('calendar_added'))}
+            d['next_viewing'] = {'id': str(nv['_id']), 'at': _iso(next_v[d['id']]),
+                                 **viewing_units(nv, umap, pmap), 'calendar_added': bool(nv.get('calendar_added'))}
         out.append(d)
     return out
 
@@ -573,6 +642,7 @@ async def create_lead(body: LeadIn, user: dict = Depends(current_account)):
     if data['interest'] not in ('high', 'medium', 'low'):
         data['interest'] = 'medium'
     data['requirements'] = [r.strip()[:60] for r in data['requirements'] if r.strip()][:8]
+    data.update(clean_prefs(data.pop('pref_category'), data.pop('pref_types'), data.pop('pref_terms')))
     data.update(await _auto_match(user, data))
     l = Lead(account_id=aid, **data, last_interaction_at=now_utc(), status='baru')
     await leads.insert_one(l.to_mongo())
@@ -591,15 +661,11 @@ async def get_lead(lid: str, user: dict = Depends(current_account)):
         .sort('scheduled_at', -1).to_list(None)
     out['viewings'] = []
     for v in vdocs:
-        vd = noid(v)
-        u = umap.get(v.get('unit_id') or '')
-        vd['unit_name'] = u['name'] if u else '-'
-        vd['location'] = unit_location(u, pmap) if u else ''
-        out['viewings'].append(vd)
+        out['viewings'].append(noid(v) | viewing_units(v, umap, pmap))
     out['suggestions'] = []
     if l.get('status') not in CLOSED_LEAD_STATUSES:
         for s, r, u in rank_units(l, await _available_units(user), limit=3):
-            out['suggestions'].append({'unit': {k: u[k] for k in ('id', 'name', 'unit_type', 'monthly_price', 'status', 'property_name')},
+            out['suggestions'].append({'unit': {k: u.get(k) for k in ('id', 'name', 'category', 'unit_type', 'monthly_price', 'daily_price', 'yearly_price', 'status', 'property_name')},
                                        'score': s, 'reasons': r})
     t = await tenants.find_one({'account_id': aid, 'lead_id': out['id'], 'deleted_at': None}, {'_id': 1})
     out['tenant_id'] = str(t['_id']) if t else None
@@ -619,6 +685,10 @@ async def update_lead(lid: str, body: LeadPatch, user: dict = Depends(current_ac
         data.pop('interest')
     if 'requirements' in data:
         data['requirements'] = [r.strip()[:60] for r in (data['requirements'] or []) if r.strip()][:8]
+    if {'pref_category', 'pref_types', 'pref_terms'} & data.keys():
+        data.update(clean_prefs(data.get('pref_category', l.get('pref_category')),
+                                data.get('pref_types', l.get('pref_types')) or [],
+                                data.get('pref_terms', l.get('pref_terms')) or []))
     if 'matched_unit_id' in data:
         if data['matched_unit_id']:
             u = await _get_visible_unit(user, data['matched_unit_id'])
@@ -790,9 +860,26 @@ async def lead_deal(lid: str, body: DealIn, user: dict = Depends(current_account
 
 # ============================== Viewings ======================================
 
+def viewing_unit_ids(v: dict) -> list[str]:
+    return list(v.get('unit_ids') or ([v['unit_id']] if v.get('unit_id') else []))
+
+
+def viewing_units(v: dict, umap: dict, pmap: dict) -> dict:
+    """Names and locations of every unit in a viewing (one trip can cover several units)."""
+    us = [umap[i] for i in viewing_unit_ids(v) if i in umap]
+    locs: list[str] = []
+    for u in us:
+        loc = unit_location(u, pmap)
+        if loc and loc not in locs:
+            locs.append(loc)
+    return {'unit_name': ', '.join(u['name'] for u in us) or '-', 'location': '; '.join(locs),
+            'units': [{'id': str(u['_id']), 'name': u['name'], 'location': unit_location(u, pmap)} for u in us]}
+
+
 class ViewingIn(BaseModel):
     lead_id: str
-    unit_id: str
+    unit_id: str | None = None
+    unit_ids: list[str] = Field(default_factory=list, max_length=5)
     scheduled_at: str
     note: str | None = None
 
@@ -803,12 +890,12 @@ async def list_viewings(user: dict = Depends(current_account)):
     docs = await viewings.find({'account_id': aid, 'deleted_at': None, 'status': {'$in': ['menunggu', 'terjadwal']}})\
         .sort('scheduled_at', 1).to_list(None)
     umap = await _units_map(aid)
+    pmap = await _props_map(aid)
     lmap = {str(l['_id']): l for l in await leads.find({'account_id': aid}, {'name': 1}).to_list(None)}
     out = []
     for v in docs:
-        d = noid(v)
+        d = noid(v) | viewing_units(v, umap, pmap)
         d['lead_name'] = (lmap.get(v.get('lead_id') or '') or {}).get('name', '-')
-        d['unit_name'] = (umap.get(v.get('unit_id') or '') or {}).get('name', '-')
         out.append(d)
     return out
 
@@ -817,15 +904,22 @@ async def list_viewings(user: dict = Depends(current_account)):
 async def create_viewing(body: ViewingIn, user: dict = Depends(current_account)):
     aid = account_id(user)
     l = await _get_lead(aid, body.lead_id)
-    await _get_visible_unit(user, body.unit_id)
-    v = Viewing(account_id=aid, lead_id=body.lead_id, unit_id=body.unit_id,
+    ids: list[str] = []
+    for uid in [*body.unit_ids, *([body.unit_id] if body.unit_id else [])]:
+        if uid and uid not in ids:
+            ids.append(uid)
+    if not ids:
+        raise HTTPException(400, 'Pilih setidaknya 1 unit untuk viewing')
+    for uid in ids:
+        await _get_visible_unit(user, uid)
+    v = Viewing(account_id=aid, lead_id=body.lead_id, unit_id=ids[0], unit_ids=ids,
                 scheduled_at=_parse_when(body.scheduled_at), note=body.note)
     await viewings.insert_one(v.to_mongo())
     setq = {'needs_followup': False, 'next_followup_date': None, 'last_interaction_at': now_utc()}
     if l.get('status') != 'negotiation':
         setq['status'] = 'viewing'
     if not l.get('matched_unit_id'):
-        setq['matched_unit_id'] = body.unit_id
+        setq['matched_unit_id'] = ids[0]
     await leads.update_one({'_id': l['_id']}, {'$set': setq})
     await log_activity_async(aid, 'viewing_scheduled', 'viewing', f'Viewing {l["name"]} dijadwalkan', v.id)
     return noid(v.to_mongo())
@@ -898,17 +992,9 @@ async def complete_viewing(vid: str, body: dict | None = None, user: dict = Depe
 
 # ============================== Tenants & Payments ============================
 
-class NewUnitIn(BaseModel):
-    name: str = Field(min_length=1, max_length=60)
-    monthly_price: int = Field(default=0, ge=0)
-    unit_type: str = 'Studio'
-    property_name: str | None = None
-
-
 class TenantIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     unit_id: str | None = None
-    new_unit: NewUnitIn | None = None  # add the unit and its tenant in one go
     phone: str | None = Field(default=None, max_length=40)
     start_date: str
     contract_months: int = Field(default=12, ge=1, le=60)
@@ -987,16 +1073,9 @@ async def get_tenant(tid: str, user: dict = Depends(current_account)):
 @router.post('/tenants')
 async def create_tenant(body: TenantIn, user: dict = Depends(current_account)):
     aid = account_id(user)
-    if body.new_unit:
-        await ensure_can_create_units(user)
-        p = await _resolve_property(aid, None, body.new_unit.property_name)
-        nu = Unit(account_id=aid, property_id=str(p['_id']), name=body.new_unit.name.strip(),
-                  unit_type=body.new_unit.unit_type, monthly_price=body.new_unit.monthly_price or body.monthly_rent,
-                  city=p.get('city'), status='kosong')
-        await units.insert_one(nu.to_mongo())
-        body.unit_id = nu.id
+    # A tenant always lives in a unit from the unit list: add the unit first.
     if not body.unit_id:
-        raise HTTPException(400, 'Pilih unit atau isi unit baru')
+        raise HTTPException(400, 'Pilih unit dari daftar unit. Belum ada? Tambah unitnya dulu.')
     u = await _get_visible_unit(user, body.unit_id)
     if u.get('status') == 'terisi':
         raise HTTPException(400, f'Unit {u["name"]} sudah terisi')
@@ -1294,6 +1373,8 @@ async def today(user: dict = Depends(current_account)):
             'last_interaction_at': _iso(l.get('last_interaction_at')),
             'unit': unit_brief(u, pmap) if u else None,
             'hot': l.get('interest') == 'high',
+            'pref_category': l.get('pref_category'), 'pref_types': l.get('pref_types') or [],
+            'pref_terms': l.get('pref_terms') or [],
             'priority': 1 if l.get('status') == 'negotiation' else 2,
         })
 
@@ -1302,12 +1383,12 @@ async def today(user: dict = Depends(current_account)):
     for v in vdocs:
         when = _aware(v.get('scheduled_at'))
         l = lmap.get(v.get('lead_id') or '') or {}
-        u = umap.get(v.get('unit_id') or '') or {}
+        vu = viewing_units(v, umap, pmap)
         past = bool(when and when < now - timedelta(hours=1))
         items.append({
             'type': 'viewing_result' if past else 'viewing', 'id': str(v['_id']), 'viewing_id': str(v['_id']),
             'lead_id': v.get('lead_id'), 'unit_id': v.get('unit_id'), 'phone': l.get('phone'),
-            'name': l.get('name', '-'), 'unit_name': u.get('name', '-'), 'location': unit_location(u, pmap),
+            'name': l.get('name', '-'), 'unit_name': vu['unit_name'], 'location': vu['location'], 'units': vu['units'],
             'calendar_added': bool(v.get('calendar_added')),
             'scheduled_at': _iso(when), 'status': v.get('status'),
             'priority': 1,
@@ -1398,18 +1479,17 @@ async def list_activities(limit: int = 50, user: dict = Depends(current_account)
 
 @router.get('/examples/units-csv')
 async def example_units_csv():
-    return {'csv': """name,property,city,unit_type,monthly_price,deposit,bedrooms,bathrooms,furnished,facilities,available_date,status,owner_name,owner_phone,notes
-A12,Tokyo Riverside Apartment,Jakarta Utara,Studio,3200000,1200000,1,1,ya,"AC,WiFi,Kasur,Kamar Mandi Dalam",,kosong,Pak Hendra,+62 812-1111-2222,Ada balkon
-B07,Tokyo Riverside Apartment,Jakarta Utara,Studio,2900000,1200000,1,1,ya,"AC,WiFi,Kasur",,terisi,Bu Lina,+62 813-3333-4444,Langsung pindah
-C21,Tokyo Riverside Apartment,Jakarta Utara,1 Bedroom,4500000,1500000,1,1,ya,"AC,WiFi,Sofa,Dapur",2026-11-01,kosong,Pak Hendra,+62 812-1111-2222,View kolam
-M01,Kos Melati Putih,Jakarta Pusat,Kost 3x3,1500000,500000,1,1,ya,"AC,WiFi,Kasur",,terisi,Bu Sari,+62 857-5555-6666,Kamar belakang"""}
+    return {'csv': """nama,jenis,tipe,alamat,harga_bulanan,harga_harian,harga_tahunan,status
+Tokyo Riverside A12,apartemen,Studio,"PIK 2, Jakarta Utara",3200000,,,kosong
+Tokyo Riverside C21,apartemen,1 Bedroom,"PIK 2, Jakarta Utara",4500000,650000,,kosong
+Rumah Bintaro Sektor 9,rumah,3 Bedroom,"Jl. Kasuari, Bintaro",9000000,,100000000,terisi
+Villa Canggu 2,rumah,2 Bedroom,"Canggu, Bali",,1500000,,kosong"""}
 
 
 EXPORTS = {
-    'units': ['name', 'property', 'unit_type', 'status', 'monthly_price', 'deposit', 'bedrooms', 'bathrooms',
-              'furnished', 'facilities', 'available_date', 'owner_name', 'owner_phone', 'notes'],
-    'leads': ['name', 'phone', 'status', 'budget_max', 'unit_type', 'preferred_location', 'move_in_date',
-              'requirements', 'matched_unit', 'next_followup_date', 'notes', 'created_at'],
+    'units': ['name', 'category', 'unit_type', 'address', 'status', 'monthly_price', 'daily_price', 'yearly_price'],
+    'leads': ['name', 'phone', 'status', 'hot_buyer', 'pref_category', 'pref_types', 'pref_terms',
+              'matched_unit', 'created_at'],
     'tenants': ['name', 'phone', 'unit', 'status', 'start_date', 'end_date', 'monthly_rent', 'deposit',
                 'payment_due_day'],
     'payments': ['tenant', 'unit', 'period', 'amount', 'due_date', 'status', 'paid_at'],
@@ -1429,15 +1509,13 @@ async def export_csv(kind: str, user: dict = Depends(current_account)):
     rows: list[dict] = []
     if kind == 'units':
         for u in umap.values():
-            rows.append({**u, 'property': (pmap.get(u.get('property_id') or '') or {}).get('name', ''),
-                         'furnished': 'ya' if u.get('furnished') else 'tidak',
-                         'facilities': ', '.join(u.get('facilities') or [])})
+            rows.append({**u, 'address': unit_location(u, pmap)})
     elif kind == 'leads':
         for l in await leads.find(base).to_list(None):
-            rows.append({**l, 'budget_max': l.get('budget_max') or l.get('budget_min'),
-                         'requirements': ', '.join(l.get('requirements') or []),
-                         'matched_unit': uname(l.get('matched_unit_id')),
-                         'notes': l.get('notes') or l.get('ai_note'), 'created_at': _iso(l.get('created_at'))})
+            rows.append({**l, 'hot_buyer': 'ya' if l.get('interest') == 'high' else 'tidak',
+                         'pref_types': ', '.join(l.get('pref_types') or []),
+                         'pref_terms': ', '.join(l.get('pref_terms') or []),
+                         'matched_unit': uname(l.get('matched_unit_id')), 'created_at': _iso(l.get('created_at'))})
     elif kind == 'tenants':
         for t in await tenants.find(base).to_list(None):
             rows.append({**t, 'unit': uname(t.get('unit_id'))})

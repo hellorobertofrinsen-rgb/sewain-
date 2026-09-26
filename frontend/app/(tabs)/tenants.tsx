@@ -8,19 +8,25 @@ import { TabHeader } from "@/src/components/TabHeader";
 import { SplitView } from "@/src/components/SplitView";
 import { TenantDetail } from "@/app/tenant/[id]";
 import { useIsWide } from "@/src/lib/layout";
+import { t } from "@/src/lib/i18n";
 import { useParamTrigger } from "@/src/lib/useParamTrigger";
 import { STATE_TRANSITION } from "@/src/motion";
-import { Button, Card, Chip, EmptyState, ErrorBox, Field, IconCircle, Input, Spinner, StatusPill } from "@/src/components/ui";
+import { Button, Card, Chip, EmptyState, ErrorBox, Field, IconCircle, Input, Spinner } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
-import { leaseLeftLabel, shortDay, moneyInput, parseMoney, rupiah, todayISO } from "@/src/lib/format";
+import { dueDayOk, leaseLeftLabel, moneyInput, parseMoney, rupiah, todayISO, typeMoney } from "@/src/lib/format";
+import { phoneOk } from "@/src/components/LeadForm";
+import { unitKind } from "@/src/lib/unitKinds";
 import { DateInput } from "@/src/components/DateInput";
-import { fonts, makeStyles, spacing, withAlpha } from "@/src/theme";
+import { fonts, makeStyles, spacing, useTheme, withAlpha } from "@/src/theme";
+import { Avatar } from "@/src/components/Avatar";
+import { Icon } from "@/src/components/Icon";
 
 export default function TenantsScreen() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const s = useStyles();
+  const { colors } = useTheme();
   const wide = useIsWide();
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -35,6 +41,8 @@ export default function TenantsScreen() {
   });
   const { data: allUnits } = useQuery({ queryKey: ["units", "semua"], queryFn: () => api<any[]>("/units?status=semua"), enabled: addOpen });
   const units = (allUnits || []).filter((u) => u.status !== "terisi");
+  const ready = !!f.unit_id && !!f.name.trim() && phoneOk(f.phone) && !!f.start_date && dueDayOk(f.due_day)
+    && !!parseMoney(f.monthly_rent) && f.deposit !== "";
 
   const belum = (data || []).filter((t) => t.payment_status === "belum_bayar");
   const belumTotal = belum.reduce((a, t) => a + (t.next_amount || 0), 0);
@@ -46,7 +54,7 @@ export default function TenantsScreen() {
         body: {
           name: f.name,
           unit_id: f.unit_id,
-          phone: f.phone || null,
+          phone: f.phone.trim(),
           start_date: f.start_date,
           contract_months: f.months,
           monthly_rent: parseMoney(f.monthly_rent) ?? 0,
@@ -103,27 +111,13 @@ export default function TenantsScreen() {
             return (
               <Card testID={`tenant-card-${item.id}`} onPress={() => open(item.id)} style={[STATE_TRANSITION, s.card, wide && selected === item.id && s.cardSelected]}>
                 <View style={s.cardHead}>
-                  <View style={s.avatar}>
-                    <RNText style={s.avatarText}>{(item.name || "?").charAt(0).toUpperCase()}</RNText>
-                  </View>
+                  <Avatar name={item.name} photo={item.photo} size={48} testID={`tenant-avatar-${item.id}`} />
                   <View style={{ flex: 1, gap: 3 }}>
                     <RNText style={s.name} numberOfLines={1}>{item.name}</RNText>
-                    <RNText style={s.meta} numberOfLines={1}>
-                      Unit {item.unit_name} · {rupiah(item.monthly_rent)}/bln
-                    </RNText>
+                    <RNText style={[s.lease, soon && s.leaseSoon]} numberOfLines={1} testID={`tenant-ends-${item.id}`}>{leaseLeftLabel(item.days_left)}</RNText>
                   </View>
+                  <Icon name="chevron-right" size={18} color={colors.muted} />
                 </View>
-                <View style={s.foot}>
-                  {item.payment_status === "belum_bayar" ? (
-                    <StatusPill label={item.overdue > 0 ? `Telat ${item.overdue} hari` : "Belum bayar"} tone="error" testID={`tenant-status-${item.id}`} />
-                  ) : (
-                    <StatusPill label="Lunas" tone="success" testID={`tenant-status-${item.id}`} />
-                  )}
-                  {item.payment_status === "belum_bayar" ? (
-                    <RNText style={s.due} numberOfLines={1}>tempo {shortDay(item.next_due + "T00:00:00")}</RNText>
-                  ) : null}
-                </View>
-                <RNText style={[s.lease, soon && s.leaseSoon]} numberOfLines={1}>Kontrak: {leaseLeftLabel(item.days_left).toLowerCase()}</RNText>
               </Card>
             );
           }}
@@ -148,23 +142,36 @@ export default function TenantsScreen() {
         emptyArt="tenants"
         emptyText="Pilih tenant untuk lihat kontrak, tagihan, dan riwayatnya."
       />
-      <Sheet visible={addOpen} onClose={() => setAddOpen(false)} title="Tambah Tenant" testID="add-tenant-sheet" scroll>
+      <Sheet visible={addOpen} onClose={() => setAddOpen(false)} title={t("Tambah Tenant")} testID="add-tenant-sheet" scroll>
         <View style={{ gap: spacing.md }}>
-          {allUnits && units.length === 0 ? (
-            <ErrorBox message="Semua unit terisi. Kosongkan satu unit dulu (checkout) atau tambah unit baru." />
-          ) : (
+          {(
             <>
-              <Field label="Properti / unit kosong">
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                  {units.map((u: any) => (
-                    <Chip key={u.id} label={`${u.name} · ${u.property_name}`} active={f.unit_id === u.id} onPress={() => setF({ ...f, unit_id: u.id, monthly_rent: moneyInput(u.monthly_price), deposit: moneyInput(u.deposit) })} />
-                  ))}
-                </View>
+              <Field label={t("Unit")}>
+                {allUnits && units.length === 0 ? (
+                  <View style={s.noUnit} testID="tenant-no-unit">
+                    <RNText style={s.noUnitText}>
+                      {allUnits.length ? t("Semua unit sudah terisi. Tambah unit dulu, lalu pilih di sini.") : t("Tenant harus menempati unit dari daftar unit. Tambah unitnya dulu.")}
+                    </RNText>
+                    <Button title={t("Tambah Unit")} icon="plus" variant="secondary" size="sm" onPress={() => { setAddOpen(false); router.push("/units?add=1" as any); }} testID="tenant-add-unit-first" />
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                    {units.map((u: any) => (
+                      <Chip
+                        key={u.id}
+                        label={[u.name, unitKind(u)].filter(Boolean).join(" · ")}
+                        active={f.unit_id === u.id}
+                        onPress={() => setF({ ...f, unit_id: u.id, monthly_rent: f.monthly_rent || moneyInput(u.monthly_price), deposit: f.deposit || (u.deposit ? typeMoney(String(u.deposit)) : "") })}
+                        testID={`tenant-unit-${u.id}`}
+                      />
+                    ))}
+                  </View>
+                )}
               </Field>
-              <Field label="Nama tenant">
+              <Field label={t("Nama tenant")}>
                 <Input testID="tenant-name-input" value={f.name} onChangeText={(v) => setF({ ...f, name: v })} placeholder="mis. Kevin" />
               </Field>
-              <Field label="No. WhatsApp">
+              <Field label={t("No. WhatsApp")}>
                 <Input testID="tenant-phone-input" value={f.phone} onChangeText={(v) => setF({ ...f, phone: v })} placeholder="+62 812-…" keyboardType="phone-pad" />
               </Field>
               <View style={{ flexDirection: "row", gap: spacing.md }}>
@@ -175,19 +182,19 @@ export default function TenantsScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Field label="Bayar tiap tanggal">
-                    <Input testID="tenant-due-input" value={f.due_day} onChangeText={(v) => setF({ ...f, due_day: v })} keyboardType="numeric" />
+                    <Input testID="tenant-due-input" value={f.due_day} onChangeText={(v) => setF({ ...f, due_day: v.replace(/\D/g, "").slice(0, 2) })} keyboardType="numeric" />
                   </Field>
                 </View>
               </View>
               <View style={{ flexDirection: "row", gap: spacing.md }}>
                 <View style={{ flex: 1 }}>
                   <Field label="Sewa / bulan">
-                    <Input testID="tenant-rent-input" value={f.monthly_rent} onChangeText={(v) => setF({ ...f, monthly_rent: moneyInput(parseMoney(v)) })} placeholder="3.200.000" keyboardType="numeric" />
+                    <Input testID="tenant-rent-input" value={f.monthly_rent} onChangeText={(v) => setF({ ...f, monthly_rent: typeMoney(v) })} placeholder="3.200.000" keyboardType="numeric" />
                   </Field>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Field label="Deposit">
-                    <Input testID="tenant-deposit-input" value={f.deposit} onChangeText={(v) => setF({ ...f, deposit: moneyInput(parseMoney(v)) })} placeholder="1.200.000" keyboardType="numeric" />
+                    <Input testID="tenant-deposit-input" value={f.deposit} onChangeText={(v) => setF({ ...f, deposit: typeMoney(v) })} placeholder="1.200.000" keyboardType="numeric" />
                   </Field>
                 </View>
               </View>
@@ -205,10 +212,10 @@ export default function TenantsScreen() {
                   ))}
                 </View>
               </Field>
-              <Field label="Komisi kamu (opsional)">
-                <Input testID="tenant-commission-input" value={f.commission} onChangeText={(v) => setF({ ...f, commission: moneyInput(parseMoney(v)) })} placeholder="1.500.000" keyboardType="numeric" />
+              <Field label={t("Komisi kamu (opsional)")} hint={t("Hanya kamu yang lihat.")}>
+                <Input testID="tenant-commission-input" value={f.commission} onChangeText={(v) => setF({ ...f, commission: typeMoney(v) })} placeholder="1.500.000" keyboardType="numeric" />
               </Field>
-              <Button title="Simpan Tenant" onPress={() => create.mutate()} loading={create.isPending} disabled={!f.name.trim() || !f.unit_id} testID="tenant-save-button" />
+              <Button title={t("Simpan Tenant")} onPress={() => create.mutate()} loading={create.isPending} disabled={!ready} testID="tenant-save-button" />
             </>
           )}
         </View>
@@ -218,6 +225,8 @@ export default function TenantsScreen() {
 }
 
 const useStyles = makeStyles((colors) => ({
+  noUnit: { gap: spacing.sm, padding: spacing.md, borderRadius: 14, backgroundColor: colors.surfaceTertiary },
+  noUnitText: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 14.5, lineHeight: 20 },
   root: { flex: 1, backgroundColor: colors.surface },
   listContent: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xxxl, gap: spacing.md },
   unpaidCard: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: withAlpha(colors.error, 0.07), marginBottom: spacing.xs, shadowOpacity: 0, boxShadow: "none" } as any,
@@ -226,12 +235,10 @@ const useStyles = makeStyles((colors) => ({
   card: { borderWidth: 1.5, borderColor: "transparent" },
   cardSelected: { borderColor: colors.brandPrimary },
   cardHead: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
-  avatarText: { color: colors.onBrandTertiary, ...fonts.bold, fontSize: 18 },
   name: { color: colors.onSurface, ...fonts.semibold, fontSize: 18, letterSpacing: -0.2 },
   meta: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15 },
   foot: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md },
   due: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 14.5, flex: 1 },
-  lease: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 14.5, marginTop: spacing.sm },
+  lease: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15 },
   leaseSoon: { color: colors.warning, ...fonts.semibold },
 }));

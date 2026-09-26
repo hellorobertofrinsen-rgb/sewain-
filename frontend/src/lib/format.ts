@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 const WEEKDAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
@@ -131,8 +132,16 @@ export const UNIT_STATUS: Record<string, string> = {
   kosong: "Kosong",
   terisi: "Terisi",
   reserved: "Reserved",
-  maintenance: "Maintenance",
+  maintenance: "Renovating…", // no price yet, or being fixed
 };
+
+/** "Rp3.200.000/bulan" for the first price a unit has (month, then night, then year). */
+export function mainPrice(u: { monthly_price?: number | null; daily_price?: number | null; yearly_price?: number | null }, suffix: { m: string; d: string; y: string }): string | null {
+  if (u.monthly_price) return `${rupiah(u.monthly_price)}${suffix.m}`;
+  if (u.daily_price) return `${rupiah(u.daily_price)}${suffix.d}`;
+  if (u.yearly_price) return `${rupiah(u.yearly_price)}${suffix.y}`;
+  return null;
+}
 
 export const LEAD_STATUS: Record<string, string> = {
   baru: "Baru",
@@ -171,13 +180,12 @@ export const PRIORITY_LABEL: Record<string, string> = {
 
 // ----------------------------- lease / money ---------------------------------
 
-/** "Sisa 4 bulan" / "Habis dalam 12 hari" / "Habis hari ini" / "Lewat 3 hari". */
+/** When the contract ends: "Selesai dalam 12 hari" / "Selesai hari ini" / "Selesai 3 hari lalu". */
 export function leaseLeftLabel(daysLeft: number | null | undefined): string {
-  if (daysLeft == null) return "Tanpa tanggal selesai";
-  if (daysLeft < 0) return `Kontrak lewat ${-daysLeft} hari`;
-  if (daysLeft === 0) return "Kontrak habis hari ini";
-  if (daysLeft <= 45) return `Habis dalam ${daysLeft} hari`;
-  return `Sisa ${Math.round(daysLeft / 30)} bulan`;
+  if (daysLeft == null) return t("Tanpa tanggal selesai");
+  if (daysLeft < 0) return t("Selesai {n} hari lalu", { n: -daysLeft });
+  if (daysLeft === 0) return t("Selesai hari ini");
+  return t("Selesai dalam {n} hari", { n: daysLeft });
 }
 
 /** Digits-only parse for money inputs ("3.200.000" -> 3200000). Empty -> null. */
@@ -185,6 +193,18 @@ export function parseMoney(v: string): number | null {
   const digits = (v || "").replace(/\D/g, "");
   return digits ? parseInt(digits, 10) : null;
 }
+
+/** What the agent typed into a money field, reformatted. Unlike moneyInput, a typed 0 stays "0". */
+export function typeMoney(v: string): string {
+  const n = parseMoney(v);
+  return n === null ? "" : n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+/** Due day of the month: 1–28 so it exists in every month. */
+export const dueDayOk = (v: string) => {
+  const n = parseInt(v, 10);
+  return n >= 1 && n <= 28;
+};
 
 /** Show a number in a money input with thousand separators. */
 export function moneyInput(n: number | null | undefined): string {

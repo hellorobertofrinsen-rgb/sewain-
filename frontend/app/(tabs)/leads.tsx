@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { FlatList, Linking, Text as RNText, View } from "react-native";
 import { router } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Icon } from "@/src/components/Icon";
 import { TabHeader } from "@/src/components/TabHeader";
@@ -11,15 +11,19 @@ import { LeadDetail } from "@/app/lead/[id]";
 import { api } from "@/src/lib/api";
 import { usePlan } from "@/src/lib/plan";
 import { useIsWide } from "@/src/lib/layout";
-import { viewingInviteMessage, waLink } from "@/src/lib/messages";
-import { dateTimeLabel, dayLabel, daysAgoLabel, expiredLabel, rupiah } from "@/src/lib/format";
+import { googleCalendarLink, viewingInviteMessage, waLink } from "@/src/lib/messages";
+import { CalendarActions } from "@/src/components/CalendarActions";
+import { useToast } from "@/src/components/Toast";
+import { t } from "@/src/lib/i18n";
+import { lookingFor } from "@/src/lib/unitKinds";
+import { Avatar } from "@/src/components/Avatar";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { STATE_TRANSITION } from "@/src/motion";
 
 // "hot" is the agent's own label (not a status), filtered on this side.
 const STATUS_FILTERS = [
   { key: "aktif", label: "Aktif" },
-  { key: "hot", label: "Hot buyer" },
+  { key: "hot", label: "Hot Buyer" },
   { key: "viewing", label: "Viewing" },
   { key: "negotiation", label: "Negosiasi" },
   { key: "deal", label: "Deal" },
@@ -129,13 +133,35 @@ export default function LeadsScreen() {
   );
 }
 
-/** One line of fact the agent recorded, most useful first; nothing when there's nothing recorded. */
-function factLine(item: any): string | null {
-  const closed = ["deal", "tidak_jadi"].includes(item.status);
-  if (!closed && item.next_viewing_at) return `Viewing ${dateTimeLabel(item.next_viewing_at)}`;
-  if (item.last_viewing_at) return `Sudah viewing ${daysAgoLabel(item.last_viewing_at)}`;
-  if (!closed && item.next_followup_date) return `Follow-up ${dayLabel(item.next_followup_date + "T00:00:00").toLowerCase()}`;
-  return null;
+/** Add the next viewing to Google Calendar, then [Batal] [Undang Viewing]. */
+function CardViewingActions({ lead }: { lead: any }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const v = lead.next_viewing;
+  const info = { name: lead.name, phone: lead.phone, unit_name: v.unit_name, scheduled_at: v.at, location: v.location, units: v.units };
+  const wa = waLink(lead.phone, viewingInviteMessage(info));
+  const refresh = () => {
+    for (const key of ["leads", "lead", "today"]) qc.invalidateQueries({ queryKey: [key] });
+  };
+  const mark = useMutation({ mutationFn: () => api(`/viewings/${v.id}/calendar`, { method: "POST" }), onSuccess: refresh });
+  const cancel = useMutation({
+    mutationFn: () => api(`/viewings/${v.id}/cancel`, { method: "POST" }),
+    onSuccess: () => { refresh(); toast(t("Viewing dibatalkan")); },
+  });
+  return (
+    <CalendarActions
+      added={!!v.calendar_added}
+      onAdd={() => {
+        Linking.openURL(googleCalendarLink(info));
+        mark.mutate();
+      }}
+      onCancel={() => cancel.mutate()}
+      primaryLabel={t("Undang Viewing")}
+      onPrimary={wa ? () => Linking.openURL(wa) : null}
+      size="sm"
+      testID={`lead-viewing-${lead.id}`}
+    />
+  );
 }
 
 function LeadCard({ item, selected, onPress, onOpenUnit, onSchedule }: { item: any; selected: boolean; onPress: () => void; onOpenUnit: (id: string) => void; onSchedule: () => void }) {
@@ -144,19 +170,17 @@ function LeadCard({ item, selected, onPress, onOpenUnit, onSchedule }: { item: a
   const wa = waLink(item.phone);
   const closed = ["deal", "tidak_jadi"].includes(item.status);
   const hot = item.interest === "high";
-  const stage = item.status === "negotiation" ? "Negosiasi" : item.status === "deal" ? "Deal" : item.status === "tidak_jadi" ? "Tidak jadi" : null;
-  const fact = factLine(item);
-  const meta = [
-    item.unit_type,
-    item.budget_max || item.budget_min ? `Budget ${rupiah(item.budget_max || item.budget_min)}` : null,
-    expiredLabel(item.move_in_date),
-  ].filter(Boolean);
+  const looking = lookingFor(item);
   return (
     <Card testID={`lead-card-${item.id}`} onPress={onPress} style={[STATE_TRANSITION, s.card, selected && s.cardSelected]}>
       <View style={s.cardHead}>
+        <Avatar name={item.name} photo={item.photo} size={48} testID={`lead-avatar-${item.id}`} />
         <View style={{ flex: 1, gap: 4 }}>
-          <RNText style={s.name} numberOfLines={1}>{item.name}</RNText>
-          {meta.length ? <RNText style={s.meta}>{meta.join(" · ")}</RNText> : null}
+          <View style={s.nameRow}>
+            <RNText style={s.name} numberOfLines={1}>{item.name}</RNText>
+            {hot ? <StatusPill label={t("Hot Buyer")} tone="error" testID={`lead-hot-${item.id}`} /> : null}
+          </View>
+          {looking ? <RNText style={s.meta} numberOfLines={1} testID={`lead-looking-${item.id}`}>{looking}</RNText> : null}
         </View>
         {wa && !closed ? (
           <PressableScale
@@ -169,38 +193,16 @@ function LeadCard({ item, selected, onPress, onOpenUnit, onSchedule }: { item: a
           </PressableScale>
         ) : null}
       </View>
-      {hot || stage || fact ? (
-        <View style={s.foot}>
-          {hot ? <StatusPill label="Hot buyer" tone="error" testID={`lead-hot-${item.id}`} /> : null}
-          {stage ? <StatusPill label={stage} tone={item.status === "deal" ? "success" : item.status === "negotiation" ? "warning" : "neutral"} testID={`lead-status-${item.id}`} /> : null}
-          {fact ? <RNText style={s.when} numberOfLines={1}>{fact}</RNText> : null}
-        </View>
-      ) : null}
       {!closed ? (
         <View style={s.actions}>
           {item.next_viewing ? (
-            wa ? (
-              <Button
-                title="Undang Viewing"
-                icon="whatsapp"
-                size="sm"
-                variant="secondary"
-                onPress={() => Linking.openURL(waLink(item.phone, viewingInviteMessage({ name: item.name, unit_name: item.next_viewing.unit_name, scheduled_at: item.next_viewing.at, location: item.next_viewing.location }))!)}
-                testID={`lead-invite-${item.id}`}
-              />
-            ) : null
+            <View style={{ flex: 1 }}>
+              <CardViewingActions lead={item} />
+            </View>
           ) : (
             <Button title="Jadwalkan Viewing" icon="calendar-check" size="sm" variant="secondary" onPress={onSchedule} testID={`lead-schedule-${item.id}`} />
           )}
         </View>
-      ) : null}
-      {item.matched_unit ? (
-        <PressableScale testID={`lead-match-${item.id}`} role="link" onPress={() => onOpenUnit(item.matched_unit.id)} style={s.matchRow}>
-          <RNText style={s.matchLine} numberOfLines={1}>
-            Cocok: <RNText style={s.matchUnit}>{item.matched_unit.name}</RNText> · {rupiah(item.matched_unit.monthly_price)}/bln
-          </RNText>
-          <Icon name="chevron-right" size={16} color={colors.brandPrimary} />
-        </PressableScale>
       ) : null}
     </Card>
   );
@@ -215,6 +217,7 @@ const useStyles = makeStyles((colors) => ({
   card: { borderWidth: 1.5, borderColor: "transparent" },
   cardSelected: { borderColor: colors.brandPrimary },
   cardHead: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
   name: { color: colors.onSurface, ...fonts.semibold, fontSize: 18, letterSpacing: -0.2 },
   meta: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15 },
   waBtn: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(30,122,79,0.1)" },

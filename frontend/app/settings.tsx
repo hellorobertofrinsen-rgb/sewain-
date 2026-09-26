@@ -2,21 +2,23 @@ import React, { useEffect, useState } from "react";
 import { Linking, ScrollView, Text as RNText, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as Clipboard from "expo-clipboard";
-import { router, useLocalSearchParams } from "expo-router";
+import { router } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ScreenHeader } from "@/src/components/ScreenHeader";
+import { MyAvatar } from "@/src/components/Avatar";
+import { Icon } from "@/src/components/Icon";
+import { Lang, t, useLang } from "@/src/lib/i18n";
 import { Sheet } from "@/src/components/Sheet";
-import { Button, Card, Field, Input, ListGroup, ListRow, SectionTitle, Spinner, StatusPill } from "@/src/components/ui";
+import { Button, Card, Field, Input, ListGroup, ListRow, PressableScale, SectionTitle, StatusPill } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
-import { PropertyForm, TYPE_LABEL } from "@/src/components/PropertyForm";
 import { api, downloadFile, readPickedText } from "@/src/lib/api";
 import { useAuth } from "@/src/lib/auth";
 import { usePlan } from "@/src/lib/plan";
 import { canPromptInstall, isIOS, isInstalled, onInstallChange, promptInstall } from "@/src/lib/install";
 import { dateLabel, todayISO } from "@/src/lib/format";
-import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { cardShadow, fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const ZONES = [
   { id: "Asia/Jakarta", label: "WIB", sub: "Jawa, Sumatra, Kalimantan Barat & Tengah" },
@@ -39,14 +41,23 @@ export default function SettingsScreen() {
   const { plan, isFree, showUpgrade } = usePlan();
   const s = useStyles();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ open?: string }>();
-  const [propOpen, setPropOpen] = useState(params.open === "property");
   const [csvOpen, setCsvOpen] = useState(false);
   const [csvText, setCsvText] = useState("");
   const [csvResult, setCsvResult] = useState<any>(null);
-  const [f, setF] = useState({ name: "", type: "apartment", city: "", area: "" });
   const [, rerender] = useState(0);
-  const [sheet, setSheet] = useState<null | "zone" | "password" | "delete">(null);
+  const [sheet, setSheet] = useState<null | "zone" | "password" | "delete" | "language">(null);
+  const { lang, setLang } = useLang();
+  const { colors } = useTheme();
+  const changeLang = async (l: Lang) => {
+    setSheet(null);
+    try {
+      const u = await api<any>("/me", { method: "PATCH", body: { language: l } });
+      await setUserProfile({ ...user!, ...u });
+    } catch {
+      // offline: still switch on this device
+    }
+    setLang(l);
+  };
   const [pw, setPw] = useState({ current: "", next: "" });
   const [delPw, setDelPw] = useState("");
 
@@ -55,19 +66,8 @@ export default function SettingsScreen() {
     return () => { off(); };
   }, []);
 
-  const { data: properties, isLoading } = useQuery({ queryKey: ["properties"], queryFn: () => api<any[]>("/properties") });
   const { data: csvExample } = useQuery({ queryKey: ["csv-example"], queryFn: () => api<{ csv: string }>("/examples/units-csv"), staleTime: Infinity });
 
-  const createProperty = useMutation({
-    mutationFn: () => api("/properties", { method: "POST", body: { ...f, city: f.city || null, area: f.area || null } }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["properties"] });
-      toast("Properti ditambahkan ✓ — sekarang tambah unitnya");
-      setPropOpen(false);
-      setF({ name: "", type: "apartment", city: "", area: "" });
-    },
-    onError: (e: any) => toast(e?.message || "Gagal menambah properti", "error"),
-  });
   const importCsv = useMutation({
     mutationFn: () => api("/units/import-csv", { method: "POST", body: { csv_text: csvText } }),
     onSuccess: (r: any) => {
@@ -135,25 +135,21 @@ export default function SettingsScreen() {
     }
   };
 
-  const initial = (user?.name || "S").charAt(0).toUpperCase();
   const installed = isInstalled();
 
   return (
     <View style={s.root}>
       <ScreenHeader title="Pengaturan" />
       <ScrollView contentContainerStyle={[s.body, { paddingBottom: insets.bottom + spacing.xxxl }]} showsVerticalScrollIndicator={false} testID="settings-screen">
-        <Card testID="account-card">
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-            <View style={s.avatar}>
-              <RNText style={s.avatarText}>{initial}</RNText>
-            </View>
-            <View style={{ flex: 1 }}>
-              <RNText style={s.userName}>{user?.name}</RNText>
-              <RNText style={s.userEmail}>{user?.email}</RNText>
-            </View>
-            {plan ? <StatusPill label={plan.label} tone={plan.plan === "premium" ? "brand" : plan.plan === "demo" ? "warning" : "neutral"} testID="plan-pill" /> : null}
+        <PressableScale soft testID="account-card" onPress={() => router.push("/profile" as any)} style={s.profileCard}>
+          <MyAvatar size={56} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <RNText style={s.userName} numberOfLines={1}>{user?.name}</RNText>
+            <RNText style={s.userEmail} numberOfLines={1}>{user?.agency || user?.email}</RNText>
           </View>
-        </Card>
+          {plan ? <StatusPill label={plan.label} tone={plan.plan === "premium" ? "brand" : plan.plan === "demo" ? "warning" : "neutral"} testID="plan-pill" /> : null}
+          <Icon name="chevron-right" size={18} color={colors.borderStrong} />
+        </PressableScale>
 
         {/* Plan */}
         {plan ? (
@@ -208,26 +204,6 @@ export default function SettingsScreen() {
         ) : null}
 
         <View style={{ gap: spacing.md }}>
-          <SectionTitle>Properti</SectionTitle>
-          {isLoading ? (
-            <Spinner />
-          ) : (
-            (properties || []).map((p) => (
-              <Card key={p.id} testID={`property-card-${p.id}`}>
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <View style={{ flex: 1 }}>
-                    <RNText style={s.propName}>{p.name}</RNText>
-                    <RNText style={s.propMeta}>{TYPE_LABEL[p.type] || p.type}{p.area ? ` · ${p.area}` : ""}{p.city ? `, ${p.city}` : ""}</RNText>
-                  </View>
-                  <StatusPill label={`${p.unit_count} unit`} tone="neutral" testID={`property-unit-count-${p.id}`} />
-                </View>
-              </Card>
-            ))
-          )}
-          <Button title="Tambah Properti" variant="ghost" icon="plus" onPress={() => setPropOpen(true)} testID="add-property-button" />
-        </View>
-
-        <View style={{ gap: spacing.md }}>
           <SectionTitle>Data</SectionTitle>
           <Card>
             <View style={s.titleRow}>
@@ -267,6 +243,7 @@ export default function SettingsScreen() {
         </View>
 
         <ListGroup title="Akun" testID="account-group">
+          <ListRow label={t("Bahasa")} value={lang === "en" ? "English" : "Bahasa Indonesia"} icon="language" tone="brand" onPress={() => setSheet("language")} testID="settings-language" />
           <ListRow label="Zona waktu" value={zoneLabel} icon="clock" tone="info" onPress={() => setSheet("zone")} testID="settings-timezone" />
           {!user?.is_demo ? <ListRow label="Ganti password" icon="lock" tone="neutral" onPress={() => setSheet("password")} testID="settings-password" /> : null}
           <ListRow
@@ -286,6 +263,20 @@ export default function SettingsScreen() {
 
         <Button title="Keluar" variant="ghost" icon="logout" onPress={() => logout()} testID="logout-button" />
       </ScrollView>
+
+      <Sheet visible={sheet === "language"} onClose={() => setSheet(null)} title={t("Bahasa")} testID="language-sheet">
+        <ListGroup>
+          {(["id", "en"] as Lang[]).map((l) => (
+            <ListRow
+              key={l}
+              label={l === "en" ? "English" : "Bahasa Indonesia"}
+              onPress={() => changeLang(l)}
+              right={lang === l ? <StatusPill label={t("Dipakai")} tone="brand" /> : undefined}
+              testID={`language-${l}`}
+            />
+          ))}
+        </ListGroup>
+      </Sheet>
 
       <Sheet visible={sheet === "zone"} onClose={() => setSheet(null)} title="Zona waktu" testID="timezone-sheet">
         <View style={{ gap: spacing.sm }}>
@@ -329,10 +320,6 @@ export default function SettingsScreen() {
           ) : null}
           <Button title="Hapus Permanen" variant="danger" onPress={() => deleteAccount.mutate()} loading={deleteAccount.isPending} disabled={!user?.is_demo && !delPw} testID="delete-confirm" />
         </View>
-      </Sheet>
-
-      <Sheet visible={propOpen} onClose={() => setPropOpen(false)} title="Tambah Properti" testID="add-property-sheet" scroll>
-        <PropertyForm f={f} setF={setF} onSave={() => createProperty.mutate()} saving={createProperty.isPending} />
       </Sheet>
 
       <Sheet visible={csvOpen} onClose={() => setCsvOpen(false)} title="Impor Unit dari CSV" testID="csv-import-sheet" scroll>
@@ -381,6 +368,7 @@ function Usage({ label, used, max }: { label: string; used: number; max: number 
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
   body: { padding: spacing.lg, gap: spacing.xl, maxWidth: 720, width: "100%", alignSelf: "center" },
+  profileCard: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, borderRadius: 20, backgroundColor: colors.surfaceSecondary, ...cardShadow },
   avatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
   avatarText: { color: colors.onBrandPrimary, ...fonts.bold, fontSize: 20 },
   userName: { color: colors.onSurface, ...fonts.semibold, fontSize: 18 },

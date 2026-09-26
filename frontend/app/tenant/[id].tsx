@@ -5,6 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ScreenHeader } from "@/src/components/ScreenHeader";
+import { PhotoAvatar } from "@/src/components/PhotoAvatar";
+import { InvoiceSheet, InvoiceTarget } from "@/src/components/InvoiceSheet";
+import { t } from "@/src/lib/i18n";
 import { Sheet } from "@/src/components/Sheet";
 import { LeaseSheet, LeaseTarget, ReminderSheet, ReminderTarget } from "@/src/components/ActionSheets";
 import { Button, Card, ErrorBox, ListGroup, ListRow, SectionTitle, Spinner, StatusPill, PressableScale } from "@/src/components/ui";
@@ -27,6 +30,7 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const [remind, setRemind] = useState<ReminderTarget | null>(null);
+  const [invoice, setInvoice] = useState<InvoiceTarget | null>(null);
   const [lease, setLease] = useState<LeaseTarget | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [showAllBills, setShowAllBills] = useState(false);
@@ -71,6 +75,9 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
   const visibleBills = showAllBills ? pays.slice().reverse() : [...unpaid, ...pays.filter((p) => p.status === "lunas").slice(-3).reverse()];
   const soon = tenant.days_left != null && tenant.days_left <= 30;
   const wa = waLink(tenant.phone);
+  const billTarget = (p: any): InvoiceTarget => ({
+    name: tenant.name, phone: tenant.phone, unit_name: tenant.unit_name, amount: p.amount, due_date: p.due_date, period: p.period, months: p.months,
+  });
   const ownerWa = waLink(tenant.owner?.phone);
   const h = tenant.history;
 
@@ -78,6 +85,13 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
     <View style={s.root}>
       <ScreenHeader embedded={embedded} title={tenant.name} right={!active ? <StatusPill label="Checkout" tone="neutral" testID="tenant-checkout-pill" /> : null} />
       <ScrollView contentContainerStyle={[s.body, { paddingBottom: (embedded ? 0 : insets.bottom) + spacing.xxxl }]} showsVerticalScrollIndicator={false} testID="tenant-detail-screen">
+        <View style={s.person}>
+          <PhotoAvatar name={tenant.name} photo={tenant.photo} path={`/tenants/${tenant.id}`} testID="tenant-photo" refresh={["tenant", "tenants", "today"]} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <RNText style={s.personName} numberOfLines={2}>{tenant.name}</RNText>
+            <RNText style={s.muted}>{t("Tenant · Unit {unit}", { unit: tenant.unit_name })}</RNText>
+          </View>
+        </View>
         {/* Lease */}
         <Card testID="lease-card" style={soon && active ? { borderWidth: 1.5, borderColor: withAlpha(colors.warning, 0.5) } : undefined}>
           <RNText style={s.kicker}>Kontrak · Unit {tenant.unit_name}</RNText>
@@ -90,9 +104,19 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
             <Fact label="Dibayar" value={INTERVAL_LABEL[tenant.payment_interval_months || 1] || `${tenant.payment_interval_months} bulan`} />
             <Fact label="Tanggal bayar" value={String(tenant.payment_due_day)} />
           </View>
+          {unpaid.length ? (
+            <Button
+              title={t("Kirim Invoice")}
+              icon="whatsapp"
+              onPress={() => setInvoice(billTarget(unpaid[0]))}
+              testID="tenant-send-invoice"
+              style={{ marginTop: spacing.md }}
+            />
+          ) : null}
           {active && wa && tenant.end_date ? (
             <Button
               title="Follow-up Extend"
+              variant={unpaid.length ? "secondary" : "primary"}
               icon="whatsapp"
               onPress={() => Linking.openURL(waLink(tenant.phone, leaseRenewalMessage({ name: tenant.name, unit_name: tenant.unit_name, end_date: tenant.end_date }))!)}
               testID="tenant-followup-extend"
@@ -156,6 +180,7 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
               {p.status !== "lunas" ? (
                 <View style={s.actions}>
                   <Button title="Tandai Lunas" size="sm" onPress={() => markPaid.mutate(p.id)} testID={`payment-paid-${p.id}`} />
+                  <Button title={t("Invoice")} variant="ghost" size="sm" icon="whatsapp" onPress={() => setInvoice(billTarget(p))} testID={`payment-invoice-${p.id}`} />
                   <Button
                     title="Ingatkan"
                     variant="ghost"
@@ -194,6 +219,7 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
       </ScrollView>
 
       <ReminderSheet payment={remind} onClose={() => setRemind(null)} />
+      <InvoiceSheet bill={invoice} onClose={() => setInvoice(null)} />
       <LeaseSheet tenant={lease} onClose={() => setLease(null)} />
 
       <Sheet visible={checkoutOpen} onClose={() => setCheckoutOpen(false)} title={`Checkout ${tenant.name}?`} testID="checkout-sheet">
@@ -219,6 +245,8 @@ function Fact({ label, value }: { label: string; value: string }) {
 const INTERVAL_LABEL: Record<number, string> = { 1: "Bulanan", 3: "Per 3 bulan", 6: "Per 6 bulan", 12: "Tahunan" };
 
 const useStyles = makeStyles((colors) => ({
+  person: { flexDirection: "row", alignItems: "center", gap: spacing.lg },
+  personName: { color: colors.onSurface, ...fonts.bold, fontSize: 22, letterSpacing: -0.3 },
   root: { flex: 1, backgroundColor: colors.surface },
   body: { padding: spacing.lg, gap: spacing.xl, maxWidth: 720, width: "100%", alignSelf: "center" },
   kicker: { color: colors.brandPrimary, ...fonts.semibold, fontSize: 14, marginBottom: 6 },

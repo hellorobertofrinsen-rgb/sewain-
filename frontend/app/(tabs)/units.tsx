@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { FlatList, ScrollView, Text as RNText, View } from "react-native";
+import { FlatList, Text as RNText, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -8,14 +8,18 @@ import { TabHeader } from "@/src/components/TabHeader";
 import { SplitView } from "@/src/components/SplitView";
 import { UnitDetail } from "@/app/unit/[id]";
 import { useIsWide } from "@/src/lib/layout";
+import { t } from "@/src/lib/i18n";
 import { useParamTrigger } from "@/src/lib/useParamTrigger";
+import { UnitForm, UnitFormValue, emptyUnitForm, unitFormBody, unitFormValid } from "@/src/components/UnitForm";
+import { unitKind } from "@/src/lib/unitKinds";
 import { STATE_TRANSITION } from "@/src/motion";
-import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Field, Input, Spinner, StatusPill, SwitchRow, PressableScale } from "@/src/components/ui";
+import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Spinner, StatusPill, PressableScale } from "@/src/components/ui";
 import { UnitThumb } from "@/src/components/UnitThumb";
+import { PriceTags, hasPrice } from "@/src/components/PriceTags";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
 import { usePlan } from "@/src/lib/plan";
-import { UNIT_STATUS, daysFromNow, rupiah } from "@/src/lib/format";
+import { UNIT_STATUS, daysFromNow } from "@/src/lib/format";
 import { fonts, makeStyles, spacing } from "@/src/theme";
 
 const STATUS_FILTERS = [
@@ -23,10 +27,9 @@ const STATUS_FILTERS = [
   { key: "kosong", label: "Kosong" },
   { key: "terisi", label: "Terisi" },
   { key: "reserved", label: "Reserved" },
-  { key: "maintenance", label: "Maintenance" },
+  { key: "maintenance", label: "Renovating" },
 ];
 
-const TYPE_OPTIONS = ["Studio", "1 Bedroom", "2 Bedroom", "Kost 3x3", "Kost 4x5", "Lainnya"];
 
 export default function UnitsScreen() {
   const qc = useQueryClient();
@@ -47,41 +50,22 @@ export default function UnitsScreen() {
     queryKey: ["units", filter],
     queryFn: () => api<any[]>(`/units?status=${filter}`),
   });
-  const { data: properties } = useQuery({ queryKey: ["properties"], queryFn: () => api<any[]>("/properties") });
-
   // form
-  const [f, setF] = useState({ property_id: "", name: "", unit_type: "Studio", monthly_price: "", deposit: "", bedrooms: "1", bathrooms: "1", furnished: true, facilities: "", notes: "", owner_name: "", owner_phone: "" });
+  const [f, setF] = useState<UnitFormValue>(emptyUnitForm);
 
   const createUnit = useMutation({
-    mutationFn: () =>
-      api("/units", {
-        method: "POST",
-        body: {
-          property_id: f.property_id || properties?.[0]?.id,
-          name: f.name,
-          unit_type: f.unit_type,
-          monthly_price: parseInt(f.monthly_price.replace(/\D/g, "") || "0", 10),
-          deposit: parseInt(f.deposit.replace(/\D/g, "") || "0", 10),
-          bedrooms: parseInt(f.bedrooms || "1", 10) || 1,
-          bathrooms: parseInt(f.bathrooms || "1", 10) || 1,
-          furnished: f.furnished,
-          facilities: f.facilities.split(",").map((x) => x.trim()).filter(Boolean),
-          notes: f.notes || null,
-          owner_name: f.owner_name.trim() || null,
-          owner_phone: f.owner_phone.trim() || null,
-        },
-      }),
+    mutationFn: () => api("/units", { method: "POST", body: unitFormBody(f) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["units"] });
       qc.invalidateQueries({ queryKey: ["today"] });
       qc.invalidateQueries({ queryKey: ["plan"] });
-      toast("Unit ditambahkan ✓");
+      toast(t("Unit ditambahkan ✓"));
       setAddOpen(false);
-      setF({ ...f, name: "", monthly_price: "", deposit: "", facilities: "", notes: "" });
+      setF(emptyUnitForm);
     },
     onError: (e: any) => {
       if (e?.code) setAddOpen(false);
-      else toast(e?.message || "Gagal menambah unit", "error");
+      else toast(e?.message || t("Gagal menambah unit"), "error");
     },
   });
 
@@ -137,16 +121,15 @@ export default function UnitsScreen() {
                 <View>
                   <UnitThumb photo={item.photos?.[0]} height={wide ? 130 : 118} radiusSize={0} testID={`unit-thumb-${item.id}`} />
                   <View style={s.statusOverlay}>
-                    <StatusPill label={UNIT_STATUS[item.status] || item.status} tone={item.status === "kosong" ? "info" : item.status === "terisi" ? "success" : item.status === "reserved" ? "warning" : "error"} testID={`unit-status-${item.id}`} solid />
+                    <StatusPill label={UNIT_STATUS[item.status] || item.status} tone={item.status === "kosong" ? "info" : item.status === "terisi" ? "success" : item.status === "reserved" ? "warning" : "neutral"} testID={`unit-status-${item.id}`} solid />
                   </View>
                 </View>
                 <View style={s.unitBody}>
                   <RNText style={s.unitName} numberOfLines={1}>{item.name}</RNText>
-                  <RNText style={s.unitSub} numberOfLines={1}>{item.unit_type} · {item.property_name || "-"}</RNText>
-                  <RNText style={s.price} numberOfLines={1}>
-                    {rupiah(item.monthly_price)}
-                    <RNText style={s.perMonth}>/bln</RNText>
-                  </RNText>
+                  <RNText style={s.unitSub} numberOfLines={1}>{unitKind(item) || "-"}</RNText>
+                  <View style={{ marginTop: 6 }}>
+                    {hasPrice(item) ? <PriceTags unit={item} size="sm" testID={`unit-prices-${item.id}`} /> : <RNText style={s.noPrice}>{t("Belum ada harga")}</RNText>}
+                  </View>
                   <RNText style={s.vacant} numberOfLines={1}>
                     {item.status === "kosong"
                       ? `Kosong ${Math.max(daysFromNow(item.vacant_since) ?? 0, 0)} hari`
@@ -189,75 +172,10 @@ export default function UnitsScreen() {
         emptyArt="units"
         emptyText="Pilih unit untuk lihat detail, pemilik, dan tenant-nya."
       />
-      <Sheet visible={addOpen} onClose={() => setAddOpen(false)} title="Tambah Unit" testID="add-unit-sheet" scroll>
-        <View style={{ gap: spacing.md }}>
-          {(properties?.length ?? 0) === 0 ? (
-            <View style={{ gap: spacing.md }}>
-              <ErrorBox message="Tambahkan properti (gedung / kos / area) dulu, lalu kembali ke sini." />
-              <Button title="Tambah Properti" onPress={() => { setAddOpen(false); router.push("/setup"); }} testID="units-go-setup" />
-            </View>
-          ) : (
-            <>
-              <Field label="Properti">
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                  {properties!.map((p) => (
-                    <Chip key={p.id} label={p.name} active={f.property_id === p.id} onPress={() => setF({ ...f, property_id: p.id })} />
-                  ))}
-                </ScrollView>
-              </Field>
-              <Field label="Nama unit">
-                <Input testID="unit-name-input" value={f.name} onChangeText={(v) => setF({ ...f, name: v })} placeholder="mis. A12" />
-              </Field>
-              <Field label="Tipe unit">
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                  {TYPE_OPTIONS.map((t) => (
-                    <Chip key={t} label={t} active={f.unit_type === t} onPress={() => setF({ ...f, unit_type: t })} />
-                  ))}
-                </ScrollView>
-              </Field>
-              <View style={{ flexDirection: "row", gap: spacing.md }}>
-                <View style={{ flex: 1 }}>
-                  <Field label="Harga / bulan">
-                    <Input testID="unit-price-input" value={f.monthly_price} onChangeText={(v) => setF({ ...f, monthly_price: v })} placeholder="3200000" keyboardType="numeric" />
-                  </Field>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Field label="Deposit">
-                    <Input testID="unit-deposit-input" value={f.deposit} onChangeText={(v) => setF({ ...f, deposit: v })} placeholder="1200000" keyboardType="numeric" />
-                  </Field>
-                </View>
-              </View>
-              <View style={{ flexDirection: "row", gap: spacing.md }}>
-                <View style={{ flex: 1 }}>
-                  <Field label="Kamar tidur">
-                    <Input testID="unit-bedrooms-input" value={f.bedrooms} onChangeText={(v) => setF({ ...f, bedrooms: v })} keyboardType="numeric" />
-                  </Field>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Field label="Kamar mandi">
-                    <Input testID="unit-bathrooms-input" value={f.bathrooms} onChangeText={(v) => setF({ ...f, bathrooms: v })} keyboardType="numeric" />
-                  </Field>
-                </View>
-              </View>
-              <Field label="Fasilitas (pisah pakai koma)">
-                <Input testID="unit-facilities-input" value={f.facilities} onChangeText={(v) => setF({ ...f, facilities: v })} placeholder="AC, WiFi, Kasur" />
-              </Field>
-              <SwitchRow label="Fully furnished" value={f.furnished} onChange={(v) => setF({ ...f, furnished: v })} testID="unit-furnished-switch" />
-              <View style={{ flexDirection: "row", gap: spacing.md }}>
-                <View style={{ flex: 1 }}>
-                  <Field label="Pemilik (opsional)">
-                    <Input testID="unit-owner-name-input" value={f.owner_name} onChangeText={(v) => setF({ ...f, owner_name: v })} placeholder="mis. Pak Hendra" />
-                  </Field>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Field label="HP pemilik">
-                    <Input testID="unit-owner-phone-input" value={f.owner_phone} onChangeText={(v) => setF({ ...f, owner_phone: v })} placeholder="0812…" keyboardType="phone-pad" />
-                  </Field>
-                </View>
-              </View>
-              <Button title="Simpan Unit" onPress={() => createUnit.mutate()} loading={createUnit.isPending} testID="unit-save-button" />
-            </>
-          )}
+      <Sheet visible={addOpen} onClose={() => setAddOpen(false)} title={t("Tambah Unit")} testID="add-unit-sheet" scroll>
+        <View style={{ gap: spacing.lg }}>
+          <UnitForm value={f} onChange={setF} />
+          <Button title={t("Simpan Unit")} onPress={() => createUnit.mutate()} loading={createUnit.isPending} disabled={!unitFormValid(f)} testID="unit-save-button" />
         </View>
       </Sheet>
     </>
@@ -277,4 +195,6 @@ const useStyles = makeStyles((colors) => ({
   price: { color: colors.onSurface, ...fonts.bold, fontSize: 17, marginTop: 6 },
   perMonth: { color: colors.muted, ...fonts.regular, fontSize: 13 },
   vacant: { color: colors.muted, ...fonts.regular, fontSize: 13 },
+  noPrice: { color: colors.muted, ...fonts.medium, fontSize: 13.5 },
+  priceHint: { color: colors.muted, ...fonts.regular, fontSize: 13.5, lineHeight: 19, marginTop: -6 },
 }));

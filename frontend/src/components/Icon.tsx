@@ -9,12 +9,21 @@ type IconName =
   | "copy" | "alert" | "clock" | "calendar-check" | "upload" | "file"
   | "send" | "refresh" | "wallet" | "search" | "logout" | "arrow-right"
   | "pencil" | "phone" | "trash" | "eye" | "user" | "key" | "zap" | "trending-up"
-  | "lock" | "globe" | "shield" | "clipboard" | "building" | "message" | "whatsapp" | "person";
+  | "lock" | "globe" | "shield" | "clipboard" | "building" | "message" | "whatsapp" | "person"
+  | "menu" | "image" | "camera" | "list-check" | "language" | "crop" | "download" | "share";
 
 // d: stroked paths, c: stroked circles, r: stroked rects, f: filled dots.
 // The tab icons (home, building, person, key) follow the logo: thin lines plus a dot.
 const GEOM: Record<string, { d?: string[]; c?: [number, number, number][]; r?: [number, number, number, number, number][]; f?: [number, number, number][] }> = {
   home: { d: ["M4 20V10.2L12 4l8 6.2V20H4z"], f: [[12, 14.5, 1.4]] },
+  menu: { d: ["M4 7h16", "M4 12h16", "M4 17h10"] },
+  download: { d: ["M12 4v11", "M7.5 10.5L12 15l4.5-4.5", "M5 19.5h14"] },
+  share: { d: ["M12 15V4", "M8 7.5L12 3.5l4 4", "M7 11H6a1.5 1.5 0 00-1.5 1.5v6A1.5 1.5 0 006 20h12a1.5 1.5 0 001.5-1.5v-6A1.5 1.5 0 0018 11h-1"] },
+  image: { r: [[3.5, 4.5, 17, 15, 2.5]], d: ["M3.5 16l4.5-4.5 4 4 3-3 5.5 5.5"], f: [[15.5, 9, 1.4]] },
+  camera: { d: ["M4 8.5A1.5 1.5 0 0 1 5.5 7H8l1.5-2h5L16 7h2.5A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z"], c: [[12, 13, 3.2]] },
+  "list-check": { d: ["M10 7h10", "M10 12h10", "M10 17h10", "M3.5 7l1.3 1.3L7 6", "M3.5 12l1.3 1.3L7 11"], f: [[5, 17, 1.2]] },
+  language: { c: [[12, 12, 8.5]], d: ["M3.5 12h17", "M12 3.5c2.3 2.4 3.5 5.2 3.5 8.5s-1.2 6.1-3.5 8.5c-2.3-2.4-3.5-5.2-3.5-8.5S9.7 5.9 12 3.5z"] },
+  crop: { d: ["M6.5 2.5v14a1 1 0 0 0 1 1h14", "M2.5 6.5h14a1 1 0 0 1 1 1v14"] },
   person: { c: [[12, 8.5, 3.5]], d: ["M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"], f: [[19, 5, 1.2]] },
   whatsapp: {
     d: [

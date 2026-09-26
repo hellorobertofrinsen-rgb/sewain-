@@ -199,6 +199,7 @@ export function Sheet({
         <Pressable style={{ flex: 1 }} onPress={requestClose} accessibilityLabel="Tutup" />
         <Animated.View
           testID={testID}
+          {...({ dataSet: { noPtr: "1" } } as any)}
           onLayout={(e) => {
             sheetH.set(e.nativeEvent.layout.height);
             if (!laidOut.current && !closing.current) {

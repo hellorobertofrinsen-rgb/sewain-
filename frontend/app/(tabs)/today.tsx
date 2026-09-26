@@ -17,9 +17,15 @@ import { Button, Card, ErrorBox, Field, IconCircle, Spinner, StatusPill, Pressab
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
 import { usePlan } from "@/src/lib/plan";
-import { viewingInviteMessage, waLink } from "@/src/lib/messages";
+import { useMenu } from "@/src/lib/menu";
+import { t } from "@/src/lib/i18n";
+import { lookingFor, prefSummary, unitKind } from "@/src/lib/unitKinds";
+import { Avatar, MyAvatar } from "@/src/components/Avatar";
+import { OnboardingCard } from "@/src/components/Onboarding";
+import { googleCalendarLink, viewingInviteMessage, waLink } from "@/src/lib/messages";
+import { CalendarActions } from "@/src/components/CalendarActions";
 import {
-  UNIT_STATUS, dateTimeLabel, dayLabel, daysAgoLabel, daysFromNow, expiredLabel, greeting, leaseLeftLabel, rupiah,
+  UNIT_STATUS, mainPrice, dateTimeLabel, daysFromNow, greeting, leaseLeftLabel, rupiah,
   shortDay, todayISO,
 } from "@/src/lib/format";
 import { cardShadow, fonts, makeStyles, spacing, useTheme, withAlpha } from "@/src/theme";
@@ -45,7 +51,7 @@ type TodayData = {
   units: { total: number; terisi: number; kosong: number; reserved: number; maintenance: number };
   counts: {
     followups: number; viewings: number; unpaid_amount: number; unpaid_count: number; leases: number;
-    issues: number; urgent: number; total: number; active_leads: number;
+    issues: number; urgent: number; total: number; active_leads: number; todos: number; todos_today: number;
   };
   items: QueueItem[];
 };
@@ -73,7 +79,8 @@ export default function TodayScreen() {
   const { plan, showUpgrade } = usePlan();
   const s = useStyles();
   const insets = useSafeAreaInsets();
-  const hasSidebar = useIsWide(); // desktop: logo + settings live in the sidebar
+  const hasSidebar = useIsWide(); // desktop: logo, menu and profile live in the sidebar
+  const { openMenu } = useMenu();
   const [focus, setFocus] = useState<Focus>(null);
   const [followupLead, setFollowupLead] = useState<FollowupTarget | null>(null);
   const [remindPayment, setRemindPayment] = useState<ReminderTarget | null>(null);
@@ -109,6 +116,7 @@ export default function TodayScreen() {
       api(`/viewings/${v.id}/reschedule`, { method: "POST", body: { scheduled_at: `${v.date}T${v.time}:00` } }), "Jadwal viewing diganti"),
     onSettled: () => setReschedule(null),
   });
+  const calendarViewing = useMutation(act((id: string) => api(`/viewings/${id}/calendar`, { method: "POST" }), ""));
   const markPaid = useMutation(act((id: string) => api(`/payments/${id}/mark-paid`, { method: "POST" }), "Lunas"));
 
   const toNegotiation = async (item: QueueItem) => {
@@ -130,7 +138,7 @@ export default function TodayScreen() {
   if (isLoading) return <Spinner label="Menyiapkan hari ini…" />;
   if (error || !data) return <View style={s.page}><ErrorBox message={(error as any)?.message || "Gagal memuat."} onRetry={refetch} /></View>;
 
-  const { counts, units, items } = data;
+  const { counts, items } = data;
   const money = rupiah(counts.unpaid_amount);
   const statCards: { v: string; l: string; testID: string; icon: IconName; tone: Tone; onPress: () => void }[] = [
     { v: `${counts.active_leads}`, l: "Prospek", testID: "stat-leads", icon: "person", tone: "brand", onPress: () => router.push("/leads" as any) },
@@ -148,15 +156,15 @@ export default function TodayScreen() {
           <View style={{ height: spacing.xl }} />
         ) : (
           <View style={[s.header, { paddingTop: insets.top + spacing.md }]}>
-            <LogoFull size={30} />
-            <View style={{ flexDirection: "row", gap: spacing.sm }}>
-              <PressableScale testID="header-report-button" onPress={() => router.push("/laporan" as any)} style={s.iconBtn} accessibilityLabel="Laporan">
-                <Icon name="chart" size={20} color={colors.onSurface} />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+              <PressableScale testID="header-menu-button" onPress={openMenu} style={s.iconBtn} accessibilityLabel={t("Menu")}>
+                <Icon name="menu" size={22} color={colors.onSurface} />
               </PressableScale>
-              <PressableScale testID="header-settings-button" onPress={() => router.push("/settings")} style={s.iconBtn} accessibilityLabel="Pengaturan">
-                <Icon name="sliders" size={20} color={colors.onSurface} />
-              </PressableScale>
+              <LogoFull size={30} />
             </View>
+            <PressableScale testID="header-profile-button" onPress={() => router.push("/profile" as any)} accessibilityLabel={t("Profil")} style={s.avatarBtn}>
+              <MyAvatar size={44} />
+            </PressableScale>
           </View>
         )}
 
@@ -174,18 +182,9 @@ export default function TodayScreen() {
             </PressableScale>
           ) : null}
 
-          {units.total === 0 ? (
-            <Card style={s.setupCard}>
-              <Illustration name="welcome" width={180} />
-              <RNText style={s.setupTitle}>Mulai dari unit pertamamu</RNText>
-              <RNText style={s.setupSub}>Catat unit yang kamu pasarkan, lalu prospek dan tenant-nya.</RNText>
-              <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md, flexWrap: "wrap", justifyContent: "center" }}>
-                <Button title="Tambah Unit" icon="plus" onPress={() => router.push("/setup")} testID="today-setup-button" />
-                <Button title="Tambah Prospek" variant="ghost" onPress={() => router.push("/lead/new" as any)} testID="today-new-lead-button" />
-              </View>
-            </Card>
-          ) : (
-            <>
+          <OnboardingCard units={unitList || []} leadsCount={counts.active_leads} tenantsCount={(tenantList || []).length} />
+
+          <>
               <View style={s.statGrid}>
                 {statCards.map((c) => (
                   <PressableScale soft key={c.testID} testID={c.testID} onPress={c.onPress} style={[s.statCard, hasSidebar && s.statCardWide]}>
@@ -206,11 +205,13 @@ export default function TodayScreen() {
                   <Icon name="chevron-right" size={18} color={colors.muted} />
                 </PressableScale>
               ) : null}
-              {counts.issues > 0 ? (
-                <PressableScale soft testID="today-issues" onPress={() => router.push("/maintenance" as any)} style={s.rowCard}>
-                  <IconCircle icon="wrench" tone={counts.urgent ? "error" : "warning"} size={40} />
+              {counts.todos > 0 ? (
+                <PressableScale soft testID="today-todos" onPress={() => router.push("/todo" as any)} style={s.rowCard}>
+                  <IconCircle icon="list-check" tone="warning" size={40} />
                   <RNText style={s.rowCardText}>
-                    {counts.issues} masalah terbuka{counts.urgent ? ` · ${counts.urgent} urgent` : ""}
+                    {counts.todos_today
+                      ? t("{n} to-do dijadwalkan hari ini", { n: counts.todos_today })
+                      : t("{n} to-do belum selesai", { n: counts.todos })}
                   </RNText>
                   <Icon name="chevron-right" size={18} color={colors.muted} />
                 </PressableScale>
@@ -219,8 +220,7 @@ export default function TodayScreen() {
               <UnitPreview units={unitList} />
               <LeadPreview leads={leadList} />
               <TenantPreview tenants={tenantList} />
-            </>
-          )}
+          </>
         </View>
       </ScrollView>
 
@@ -233,6 +233,10 @@ export default function TodayScreen() {
                 onFollowup={() => openFrom(() => setFollowupLead({ ...item, id: item.lead_id }))}
                 onDetail={(path) => openFrom(() => router.push(path as any))}
                 onConfirm={() => confirmViewing.mutate(item.viewing_id)}
+                onCalendar={() => {
+                  Linking.openURL(googleCalendarLink({ name: item.name, phone: item.phone, unit_name: item.unit_name, scheduled_at: item.scheduled_at, location: item.location }));
+                  calendarViewing.mutate(item.viewing_id);
+                }}
                 onReschedule={() => openFrom(() => { setReschedule(item); setReschedDate(todayISO(1)); setReschedTime("14:00"); })}
                 onCancel={() => cancelViewing.mutate(item.viewing_id)}
                 onNego={() => toNegotiation(item)}
@@ -279,9 +283,10 @@ export default function TodayScreen() {
 // ------------------------------ Queue card (inside the sheets) ------------------------
 
 function QueueCard({
-  item, onFollowup, onDetail, onConfirm, onReschedule, onCancel, onNego, onNotYet, onPaid, onRemind, onLease,
+  item, onFollowup, onDetail, onConfirm, onReschedule, onCancel, onNego, onNotYet, onPaid, onRemind, onLease, onCalendar,
 }: {
   item: QueueItem;
+  onCalendar: () => void;
   onFollowup: () => void; onDetail: (path: string) => void; onConfirm: () => void; onReschedule: () => void;
   onCancel: () => void; onNego: () => void; onNotYet: () => void; onPaid: () => void; onRemind: () => void; onLease: () => void;
 }) {
@@ -300,8 +305,8 @@ function QueueCard({
   if (item.type === "followup") {
     return (
       <Card testID={`queue-followup-${item.id}`} style={s.sheetCard}>
-        {head(item.name, [item.unit_type, item.budget_max ? `Budget ${rupiah(item.budget_max)}` : null].filter(Boolean).join(" · ") || "Prospek",
-          item.hot ? <StatusPill label="Hot buyer" tone="error" /> : undefined)}
+        {head(item.name, prefSummary(item) || t("Prospek"),
+          item.hot ? <StatusPill label={t("Hot Buyer")} tone="error" /> : undefined)}
         <RNText style={s.reason}>{item.reason}</RNText>
         {item.note ? <RNText style={s.note} numberOfLines={2}>{item.note}</RNText> : null}
         <View style={s.actions}>
@@ -316,19 +321,21 @@ function QueueCard({
       <Card testID={`queue-viewing-${item.id}`} style={s.sheetCard}>
         {head(`Viewing ${item.name}`, `Unit ${item.unit_name} · ${dateTimeLabel(item.scheduled_at)}`,
           <StatusPill label={item.status === "menunggu" ? "Belum dikonfirmasi" : "Terjadwal"} tone={item.status === "menunggu" ? "warning" : "info"} testID={`pill-viewing-${item.id}`} />)}
+        <View style={{ marginTop: spacing.md }}>
+          <CalendarActions
+            added={!!item.calendar_added}
+            onAdd={onCalendar}
+            onCancel={onCancel}
+            cancelLabel={t("Batal Viewing")}
+            primaryLabel={t("Undang Viewing")}
+            onPrimary={waLink(item.phone) ? () => Linking.openURL(waLink(item.phone, viewingInviteMessage({ name: item.name, unit_name: item.unit_name, scheduled_at: item.scheduled_at, location: item.location, units: item.units }))!) : null}
+            size="sm"
+            testID={`viewing-cal-${item.id}`}
+          />
+        </View>
         <View style={s.actions}>
-          {waLink(item.phone) ? (
-            <Button
-              title="Undang Viewing"
-              icon="whatsapp"
-              size="sm"
-              onPress={() => Linking.openURL(waLink(item.phone, viewingInviteMessage({ name: item.name, unit_name: item.unit_name, scheduled_at: item.scheduled_at, location: item.location }))!)}
-              testID={`viewing-invite-${item.id}`}
-            />
-          ) : null}
-          {item.status === "menunggu" ? <Button title="Konfirmasi" size="sm" variant="ghost" onPress={onConfirm} testID={`viewing-confirm-${item.id}`} /> : null}
-          <Button title="Ganti Jadwal" variant="ghost" size="sm" onPress={onReschedule} testID={`viewing-reschedule-${item.id}`} />
-          <Button title="Batal" variant="ghost" size="sm" onPress={onCancel} testID={`viewing-cancel-${item.id}`} />
+          {item.status === "menunggu" ? <Button title={t("Konfirmasi")} size="sm" variant="ghost" onPress={onConfirm} testID={`viewing-confirm-${item.id}`} /> : null}
+          <Button title={t("Ganti Jadwal")} variant="ghost" size="sm" onPress={onReschedule} testID={`viewing-reschedule-${item.id}`} />
         </View>
       </Card>
     );
@@ -427,19 +434,12 @@ function UnitPreview({ units }: { units?: any[] }) {
           onPress={() => router.push(`/unit/${u.id}` as any)}
           left={<UnitThumb photo={u.photos?.[0]} width={48} height={48} radiusSize={12} />}
           title={u.name}
-          sub={`${rupiah(u.monthly_price)}/bln · ${u.property_name || u.unit_type}`}
-          right={<StatusPill label={UNIT_STATUS[u.status] || u.status} tone={u.status === "kosong" ? "info" : u.status === "terisi" ? "success" : "warning"} />}
+          sub={[mainPrice(u, { m: t("/bulan"), d: t("/malam"), y: t("/tahun") }) || t("Belum ada harga"), unitKind(u)].filter(Boolean).join(" · ")}
+          right={<StatusPill label={UNIT_STATUS[u.status] || u.status} tone={u.status === "kosong" ? "info" : u.status === "terisi" ? "success" : u.status === "reserved" ? "warning" : "neutral"} />}
         />
       ))}
     </Section>
   );
-}
-
-function leadFact(l: any): string | null {
-  if (l.next_followup_date && l.next_followup_date <= todayISO()) return `Follow-up ${dayLabel(l.next_followup_date + "T00:00:00").toLowerCase()}`;
-  if (l.next_viewing_at) return `Viewing ${dateTimeLabel(l.next_viewing_at)}`;
-  if (l.last_viewing_at) return `Sudah viewing ${daysAgoLabel(l.last_viewing_at)}`;
-  return expiredLabel(l.move_in_date) || (l.budget_max ? `Budget ${rupiah(l.budget_max)}` : null);
 }
 
 function LeadPreview({ leads }: { leads?: any[] }) {
@@ -456,10 +456,10 @@ function LeadPreview({ leads }: { leads?: any[] }) {
           last={i === rows.length - 1}
           testID={`preview-lead-${l.id}`}
           onPress={() => router.push(`/lead/${l.id}` as any)}
-          left={<Avatar name={l.name} />}
+          left={<Avatar name={l.name} photo={l.photo} size={40} />}
           title={l.name}
-          sub={leadFact(l)}
-          right={l.interest === "high" ? <StatusPill label="Hot buyer" tone="error" /> : null}
+          sub={lookingFor(l)}
+          right={l.interest === "high" ? <StatusPill label={t("Hot Buyer")} tone="error" /> : null}
         />
       ))}
     </Section>
@@ -467,44 +467,23 @@ function LeadPreview({ leads }: { leads?: any[] }) {
 }
 
 function TenantPreview({ tenants }: { tenants?: any[] }) {
-  // Unpaid bills first (most overdue first), then contracts ending soonest.
-  const rows = [...(tenants || [])]
-    .sort((a, b) =>
-      Number(b.payment_status === "belum_bayar") - Number(a.payment_status === "belum_bayar") ||
-      (b.overdue ?? 0) - (a.overdue ?? 0) ||
-      (a.days_left ?? 9999) - (b.days_left ?? 9999))
-    .slice(0, 3);
+  // Contracts ending soonest first.
+  const rows = [...(tenants || [])].sort((a, b) => (a.days_left ?? 9999) - (b.days_left ?? 9999)).slice(0, 3);
   return (
     <Section title="Tenant" to="/tenants" testID="preview-tenants">
       {rows.length === 0 ? <Empty text="Belum ada tenant." /> : null}
-      {rows.map((t, i) => (
+      {rows.map((tn, i) => (
         <PreviewRow
-          key={t.id}
+          key={tn.id}
           last={i === rows.length - 1}
-          testID={`preview-tenant-${t.id}`}
-          onPress={() => router.push(`/tenant/${t.id}` as any)}
-          left={<Avatar name={t.name} />}
-          title={t.name}
-          sub={`Unit ${t.unit_name} · ${leaseLeftLabel(t.days_left)}`}
-          right={
-            t.payment_status === "belum_bayar" ? (
-              <StatusPill label={t.overdue > 0 ? `Telat ${t.overdue} hari` : "Belum bayar"} tone="error" />
-            ) : (
-              <StatusPill label="Lunas" tone="success" />
-            )
-          }
+          testID={`preview-tenant-${tn.id}`}
+          onPress={() => router.push(`/tenant/${tn.id}` as any)}
+          left={<Avatar name={tn.name} photo={tn.photo} size={40} />}
+          title={tn.name}
+          sub={leaseLeftLabel(tn.days_left)}
         />
       ))}
     </Section>
-  );
-}
-
-function Avatar({ name }: { name: string }) {
-  const s = useStyles();
-  return (
-    <View style={s.avatar}>
-      <RNText style={s.avatarText}>{(name || "?").charAt(0).toUpperCase()}</RNText>
-    </View>
   );
 }
 
@@ -519,6 +498,7 @@ const useStyles = makeStyles((colors) => ({
     paddingBottom: spacing.sm,
   },
   iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: colors.surfaceSecondary, ...cardShadow },
+  avatarBtn: { borderRadius: 24, borderWidth: 2, borderColor: colors.surfaceSecondary, ...cardShadow },
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.md, maxWidth: 760, width: "100%", alignSelf: "center" },
   greeting: { color: colors.onSurface, ...fonts.bold, fontSize: 28, letterSpacing: -0.5, lineHeight: 34, marginBottom: spacing.xs },
   banner: {
@@ -551,9 +531,6 @@ const useStyles = makeStyles((colors) => ({
     ...cardShadow,
   },
   rowCardText: { color: colors.onSurface, ...fonts.semibold, fontSize: 16, flex: 1 },
-  setupCard: { alignItems: "center", gap: 4, paddingVertical: spacing.xl },
-  setupTitle: { color: colors.onSurface, ...fonts.bold, fontSize: 20, marginTop: spacing.sm, textAlign: "center" },
-  setupSub: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15, lineHeight: 22, textAlign: "center", maxWidth: 420 },
   sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 4 },
   sectionTitle: { color: colors.onSurface, ...fonts.bold, fontSize: 22, letterSpacing: -0.3 },
   seeAll: { flexDirection: "row", alignItems: "center", gap: 2 },
@@ -572,8 +549,6 @@ const useStyles = makeStyles((colors) => ({
   previewTitle: { color: colors.onSurface, ...fonts.semibold, fontSize: 16.5 },
   previewSub: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 14 },
   emptyText: { color: colors.muted, ...fonts.regular, fontSize: 15, padding: spacing.md },
-  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
-  avatarText: { color: colors.onBrandTertiary, ...fonts.bold, fontSize: 18 },
   sheetCard: { backgroundColor: colors.surface, boxShadow: "none", shadowOpacity: 0 } as any,
   cardHead: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   itemTitle: { color: colors.onSurface, ...fonts.semibold, fontSize: 17, letterSpacing: -0.2 },

@@ -115,6 +115,13 @@ async def me(user: dict = Depends(current_account)):
     return public_user(user)
 
 
+@router.post('/auth/refresh')
+async def refresh_session(user: dict = Depends(current_account)):
+    """A fresh 90-day token each time the app opens, so an agent who uses SewAIn
+    even once every few months never has to sign in again."""
+    return {'token': create_token(str(user['_id'])), 'user': public_user(user)}
+
+
 class ProfileIn(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     timezone: str | None = None

@@ -118,8 +118,10 @@ async def stats(start: str | None = Query(default=None), end: str | None = Query
     # ---------------- Hot / least-performing units in the range ----------------
     per_unit: dict[str, dict] = {str(u['_id']): {'viewings': 0, 'prospects': 0, 'nights': 0} for u in all_units}
     for v in all_viewings:
-        if v.get('unit_id') in per_unit and cur.has(v.get('scheduled_at')):
-            per_unit[v['unit_id']]['viewings'] += 1
+        if cur.has(v.get('scheduled_at')):
+            for uid in v.get('unit_ids') or [v.get('unit_id')]:
+                if uid in per_unit:
+                    per_unit[uid]['viewings'] += 1
     for l in cohort:
         if l.get('matched_unit_id') in per_unit:
             per_unit[l['matched_unit_id']]['prospects'] += 1

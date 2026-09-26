@@ -7,8 +7,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 
 import { ScreenHeader } from "@/src/components/ScreenHeader";
+import { UnitForm, UnitFormValue, unitFormBody, unitFormValid, unitToForm } from "@/src/components/UnitForm";
+import { prefSummary, unitKind } from "@/src/lib/unitKinds";
+import { Bookings } from "@/src/components/Bookings";
+import { PriceTags, hasPrice } from "@/src/components/PriceTags";
+import { t } from "@/src/lib/i18n";
 import { Sheet } from "@/src/components/Sheet";
-import { Button, Card, Chip, EmptyState, ErrorBox, Field, Input, ListGroup, ListRow, SectionTitle, Spinner, StatusPill, SwitchRow, Textarea } from "@/src/components/ui";
+import { Button, Card, Chip, EmptyState, ErrorBox, ListGroup, ListRow, SectionTitle, Spinner, StatusPill } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api, photoUrl, uploadFile } from "@/src/lib/api";
 import { useAuth } from "@/src/lib/auth";
@@ -32,7 +37,7 @@ export function UnitDetail({ id, embedded, onGone }: { id: string; embedded?: bo
   const [editOpen, setEditOpen] = useState(false);
   const [matchesOpen, setMatchesOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [f, setF] = useState<any>(null);
+  const [f, setF] = useState<UnitFormValue | null>(null);
 
   const { data: unit, isLoading, error, refetch } = useQuery({
     queryKey: ["unit", id],
@@ -43,23 +48,6 @@ export function UnitDetail({ id, embedded, onGone }: { id: string; embedded?: bo
     queryKey: ["unit-matches", id],
     queryFn: () => api<any>(`/units/${id}/matches`),
     enabled: matchesOpen,
-  });
-
-  const buildBody = (u: any) => ({
-    property_id: u.property_id,
-    name: u.name,
-    unit_type: u.unit_type,
-    monthly_price: u.monthly_price,
-    deposit: u.deposit || 0,
-    bedrooms: u.bedrooms || 1,
-    bathrooms: u.bathrooms || 1,
-    furnished: !!u.furnished,
-    facilities: u.facilities || [],
-    available_date: u.available_date || null,
-    status: u.status,
-    notes: u.notes || null,
-    owner_name: u.owner_name || null,
-    owner_phone: u.owner_phone || null,
   });
 
   const setStatus = useMutation({
@@ -74,7 +62,7 @@ export function UnitDetail({ id, embedded, onGone }: { id: string; embedded?: bo
   });
 
   const save = useMutation({
-    mutationFn: () => api(`/units/${id}`, { method: "PATCH", body: { ...f } }),
+    mutationFn: () => api(`/units/${id}`, { method: "PATCH", body: unitFormBody(f!) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["unit", id] });
       qc.invalidateQueries({ queryKey: ["units"] });
@@ -126,7 +114,7 @@ export function UnitDetail({ id, embedded, onGone }: { id: string; embedded?: bo
   if (error || !unit) return <View style={s.root}><ErrorBox message={(error as any)?.message} onRetry={refetch} /></View>;
 
   const openEdit = () => {
-    setF(buildBody(unit));
+    setF(unitToForm(unit));
     setEditOpen(true);
   };
 
@@ -134,7 +122,7 @@ export function UnitDetail({ id, embedded, onGone }: { id: string; embedded?: bo
     <View style={s.root}>
       <ScreenHeader embedded={embedded}
         title={unit.name}
-        right={<StatusPill label={UNIT_STATUS[unit.status] || unit.status} tone={unit.status === "kosong" ? "info" : unit.status === "terisi" ? "success" : unit.status === "reserved" ? "warning" : "error"} testID="unit-status-pill" />}
+        right={<StatusPill label={UNIT_STATUS[unit.status] || unit.status} tone={unit.status === "kosong" ? "info" : unit.status === "terisi" ? "success" : unit.status === "reserved" ? "warning" : "neutral"} testID="unit-status-pill" />}
       />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: (embedded ? 0 : insets.bottom) + spacing.xxxl, gap: spacing.xl, maxWidth: 720, width: "100%", alignSelf: "center" }} showsVerticalScrollIndicator={false} testID="unit-detail-screen">
         {unit.photos?.length ? (
@@ -153,15 +141,19 @@ export function UnitDetail({ id, embedded, onGone }: { id: string; embedded?: bo
         ) : null}
 
         <ListGroup title="Detail unit" testID="unit-info">
-          <ListRow label="Harga" value={`${rupiah(unit.monthly_price)}/bln`} icon="wallet" tone="brand" />
-          <ListRow label="Deposit" value={unit.deposit ? rupiah(unit.deposit) : "-"} icon="shield" tone="neutral" />
-          <ListRow label="Properti" value={unit.property_name || "-"} icon="building" tone="info" />
-          <ListRow label="Tipe" value={unit.unit_type} icon="grid" tone="neutral" />
-          <ListRow label="Kamar" value={`${unit.bedrooms} tidur · ${unit.bathrooms} mandi`} icon="home" tone="neutral" />
-          <ListRow label="Furnished" value={unit.furnished ? "Ya" : "Tidak"} icon="check" tone="success" />
+          {hasPrice(unit) ? (
+            <View style={{ paddingHorizontal: spacing.lg, paddingVertical: 14, gap: 8 }}>
+              <RNText style={s.rowLabel}>{t("Harga")}</RNText>
+              <PriceTags unit={unit} testID="unit-detail-prices" />
+            </View>
+          ) : (
+            <ListRow label={t("Harga")} value={t("Belum ada harga")} icon="wallet" tone="neutral" />
+          )}
+          <ListRow label={t("Jenis")} value={unitKind(unit) || "-"} icon="building" tone="info" testID="unit-kind-row" />
+          <ListRow label={t("Lokasi")} value={unit.location || "-"} icon="globe" tone="neutral" testID="unit-location-row" />
+          {unit.deposit ? <ListRow label="Deposit" value={rupiah(unit.deposit)} icon="shield" tone="neutral" /> : null}
           {unit.available_date ? <ListRow label="Available" value={unit.available_date} icon="calendar-check" tone="warning" /> : null}
           {unit.status === "kosong" ? <ListRow label="Kosong selama" value={`${Math.max(daysFromNow(unit.vacant_since) ?? 0, 0)} hari`} icon="clock" tone="warning" /> : null}
-          {unit.city ? <ListRow label="Kota" value={unit.city} icon="globe" tone="neutral" /> : null}
         </ListGroup>
 
         {unit.facilities?.length || unit.notes ? (
@@ -209,6 +201,8 @@ export function UnitDetail({ id, embedded, onGone }: { id: string; embedded?: bo
           </ListGroup>
         ) : null}
 
+        <Bookings unit={unit} />
+
         <View style={{ gap: spacing.sm }}>
           <SectionTitle>Ubah status</SectionTitle>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
@@ -248,7 +242,7 @@ export function UnitDetail({ id, embedded, onGone }: { id: string; embedded?: bo
                   <StatusPill label={`${m.score}`} tone={m.score >= 60 ? "success" : "neutral"} testID={`match-score-${m.lead.id}`} />
                 </View>
                 <RNText style={s.matchLeadMeta}>
-                  {[m.lead.unit_type, m.lead.budget_max ? `Budget max ${rupiah(m.lead.budget_max)}` : null].filter(Boolean).join(" · ")}
+                  {prefSummary(m.lead) || (m.lead.phone ?? "")}
                 </RNText>
                 <View style={{ marginTop: 8, gap: 3 }}>
                   {m.reasons.map((r: string, ri: number) => (
@@ -269,45 +263,9 @@ export function UnitDetail({ id, embedded, onGone }: { id: string; embedded?: bo
 
       <Sheet visible={editOpen} onClose={() => setEditOpen(false)} title={`Edit ${unit.name}`} testID="unit-edit-sheet" scroll>
         {f ? (
-          <View style={{ gap: spacing.md }}>
-            <Field label="Nama unit">
-              <Input testID="edit-unit-name-input" value={f.name} onChangeText={(v: string) => setF({ ...f, name: v })} />
-            </Field>
-            <Field label="Tipe">
-              <Input testID="edit-unit-type-input" value={f.unit_type} onChangeText={(v: string) => setF({ ...f, unit_type: v })} />
-            </Field>
-            <View style={{ flexDirection: "row", gap: spacing.md }}>
-              <View style={{ flex: 1 }}>
-                <Field label="Harga / bulan">
-                  <Input testID="edit-unit-price-input" value={String(f.monthly_price)} onChangeText={(v: string) => setF({ ...f, monthly_price: parseInt(v.replace(/\D/g, "") || "0", 10) })} keyboardType="numeric" />
-                </Field>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Field label="Deposit">
-                  <Input testID="edit-unit-deposit-input" value={String(f.deposit)} onChangeText={(v: string) => setF({ ...f, deposit: parseInt(v.replace(/\D/g, "") || "0", 10) })} keyboardType="numeric" />
-                </Field>
-              </View>
-            </View>
-            <Field label="Fasilitas (pisah pakai koma)">
-              <Input testID="edit-unit-facilities-input" value={(f.facilities || []).join(", ")} onChangeText={(v: string) => setF({ ...f, facilities: v.split(",").map((x: string) => x.trim()).filter(Boolean) })} />
-            </Field>
-            <Field label="Catatan">
-              <Textarea testID="edit-unit-notes-input" value={f.notes || ""} onChangeText={(v: string) => setF({ ...f, notes: v })} />
-            </Field>
-            <SwitchRow label="Fully furnished" value={f.furnished} onChange={(v: boolean) => setF({ ...f, furnished: v })} testID="edit-unit-furnished-switch" />
-            <View style={{ flexDirection: "row", gap: spacing.md }}>
-              <View style={{ flex: 1 }}>
-                <Field label="Pemilik">
-                  <Input testID="edit-unit-owner-name" value={f.owner_name || ""} onChangeText={(v: string) => setF({ ...f, owner_name: v || null })} placeholder="Nama pemilik" />
-                </Field>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Field label="HP pemilik">
-                  <Input testID="edit-unit-owner-phone" value={f.owner_phone || ""} onChangeText={(v: string) => setF({ ...f, owner_phone: v || null })} placeholder="0812…" keyboardType="phone-pad" />
-                </Field>
-              </View>
-            </View>
-            <Button title="Simpan" onPress={() => save.mutate()} loading={save.isPending} testID="edit-unit-save-button" />
+          <View style={{ gap: spacing.lg }}>
+            <UnitForm value={f} onChange={setF} prefix="edit-unit" />
+            <Button title={t("Simpan")} onPress={() => save.mutate()} loading={save.isPending} disabled={!unitFormValid(f)} testID="edit-unit-save-button" />
           </View>
         ) : null}
       </Sheet>

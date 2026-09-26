@@ -41,7 +41,7 @@ export function PressableScale({
 }: Omit<PressableProps, "style" | "children"> & {
   style?: StyleProp<ViewStyle>;
   soft?: boolean; // large surfaces (cards) scale less
-  role?: "button" | "link" | "tab";
+  role?: "button" | "link" | "tab" | "checkbox";
   children?: React.ReactNode;
 }) {
   const reduced = useReducedMotion();
@@ -162,11 +162,13 @@ export function Textarea(props: React.ComponentProps<typeof TextInput> & { testI
 
 export function SwitchRow({
   label,
+  sub,
   value,
   onChange,
   testID,
 }: {
   label: string;
+  sub?: string;
   value: boolean;
   onChange: (v: boolean) => void;
   testID?: string;
@@ -174,7 +176,10 @@ export function SwitchRow({
   const { colors } = useTheme();
   return (
     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 48, gap: spacing.md }}>
-      <RNText style={{ color: colors.onSurface, ...fonts.regular, fontSize: 16, flex: 1 }}>{label}</RNText>
+      <View style={{ flex: 1, gap: 2 }}>
+        <RNText style={{ color: colors.onSurface, ...fonts.regular, fontSize: 16 }}>{label}</RNText>
+        {sub ? <RNText style={{ color: colors.muted, ...fonts.regular, fontSize: 13.5, lineHeight: 18 }}>{sub}</RNText> : null}
+      </View>
       <Switch
         testID={testID}
         value={value}
@@ -196,21 +201,31 @@ export function Chip({
   active,
   onPress,
   testID,
+  check,
 }: {
   label: string;
   active: boolean;
   onPress?: () => void;
   testID?: string;
+  /** Checklist chip (several can be on): shows a tick and reads as a checkbox. */
+  check?: boolean;
 }) {
   const s = useStyles();
+  const { colors } = useTheme();
   return (
     <PressableScale
       testID={testID}
       onPress={onPress}
-      accessibilityState={{ selected: active }}
-      style={[STATE_TRANSITION, s.chip, active && s.chipActive]}
+      role={check ? "checkbox" : "button"}
+      accessibilityState={check ? { checked: active } : { selected: active }}
+      style={[STATE_TRANSITION, s.chip, check && s.chipCheck, active && (check ? s.chipCheckOn : s.chipActive)]}
     >
-      <RNText style={[s.chipText, active && s.chipTextActive]} numberOfLines={1}>
+      {check ? (
+        <View style={[s.tick, active && s.tickOn]}>
+          {active ? <Icon name="check" size={11} color={colors.onBrandPrimary} strokeWidth={3} /> : null}
+        </View>
+      ) : null}
+      <RNText style={[s.chipText, active && (check ? s.chipTextCheckOn : s.chipTextActive)]} numberOfLines={1}>
         {label}
       </RNText>
     </PressableScale>
@@ -491,6 +506,14 @@ const useStyles = makeStyles((colors) => ({
   chipActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   chipText: { color: colors.onSurfaceSecondary, ...fonts.medium, fontSize: 14 },
   chipTextActive: { color: colors.onBrandPrimary, ...fonts.semibold },
+  chipCheck: { flexDirection: "row", gap: 8, paddingLeft: 12 },
+  chipCheckOn: { backgroundColor: colors.brandTertiary, borderColor: colors.brandPrimary },
+  chipTextCheckOn: { color: colors.onBrandTertiary, ...fonts.semibold },
+  tick: {
+    width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: colors.borderStrong,
+    alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceSecondary,
+  },
+  tickOn: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   chipRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.xs, alignItems: "center" },
   card: {
     backgroundColor: colors.surfaceSecondary,

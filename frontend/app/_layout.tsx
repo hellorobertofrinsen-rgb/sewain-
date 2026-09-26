@@ -8,10 +8,12 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/src/components/error-boundary";
 import { queryClient } from "@/src/query-client";
 import { AuthProvider } from "@/src/lib/auth";
+import { LangBoundary, LanguageProvider } from "@/src/lib/i18n";
 import { PlanProvider } from "@/src/lib/plan";
 import "@/src/lib/install";
 import { ToastProvider } from "@/src/components/Toast";
 import { CelebrateProvider } from "@/src/components/Celebrate";
+import { PullToRefresh } from "@/src/components/PullToRefresh";
 import { useTheme } from "@/src/theme";
 
 // Disable logbox errors etc so that users can see the app
@@ -36,17 +38,22 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <KeyboardProvider>
             <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
+            <LanguageProvider>
             <AuthProvider>
+              <LangBoundary>
               <ToastProvider>
                 <CelebrateProvider>
                 <PlanProvider>
                   <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
                     <Stack.Screen name="lead/new" options={{ animation: "slide_from_bottom" }} />
                   </Stack>
+                  <PullToRefresh />
                 </PlanProvider>
                 </CelebrateProvider>
               </ToastProvider>
+              </LangBoundary>
             </AuthProvider>
+            </LanguageProvider>
           </KeyboardProvider>
         </QueryClientProvider>
       </GestureHandlerRootView>
