@@ -326,7 +326,7 @@ function QueueCard({
             added={!!item.calendar_added}
             onAdd={onCalendar}
             onCancel={onCancel}
-            cancelLabel={t("Batal Viewing")}
+            cancelLabel={t("Batal")}
             primaryLabel={t("Undang Viewing")}
             onPrimary={waLink(item.phone) ? () => Linking.openURL(waLink(item.phone, viewingInviteMessage({ name: item.name, unit_name: item.unit_name, scheduled_at: item.scheduled_at, location: item.location, units: item.units }))!) : null}
             size="sm"

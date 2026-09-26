@@ -352,7 +352,7 @@ function InviteButtons({ lead, viewing, compact }: { lead: any; viewing: any; co
           mark.mutate();
         }}
         onCancel={() => cancel.mutate()}
-        cancelLabel={t("Batal Viewing")}
+        cancelLabel={t("Batal")}
         primaryLabel={t("Undang Viewing")}
         onPrimary={wa ? () => Linking.openURL(wa) : null}
         size={compact ? "sm" : "md"}

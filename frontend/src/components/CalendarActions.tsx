@@ -48,7 +48,7 @@ export function CalendarActions({
   const reduced = useReducedMotion();
   const p = useSharedValue(added ? 1 : 0); // first render: no animation
   const height = size === "sm" ? 40 : 50;
-  const fontSize = size === "sm" ? 14 : 16;
+  const fontSize = size === "sm" ? 14 : 15.5;
   const iconSize = size === "sm" ? 15 : 18;
 
   useEffect(() => {
@@ -111,11 +111,12 @@ const useStyles = makeStyles((colors) => ({
     paddingHorizontal: 12,
   },
   cancelText: { color: colors.onSurface, ...fonts.semibold },
-  right: { flexGrow: 1, flexBasis: 0, borderRadius: radius.pill, overflow: "hidden" },
+  // The action on the right gets two thirds of the row so its label fits on small phones.
+  right: { flexGrow: 2, flexBasis: 0, borderRadius: radius.pill, overflow: "hidden" },
   fill: { alignItems: "center", justifyContent: "center" },
   labelLayer: {
     position: "absolute", left: 0, right: 0, top: 0, bottom: 0,
-    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 12,
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 10,
   },
   addText: { color: colors.onBrandTertiary, ...fonts.semibold },
   primaryText: { color: colors.onBrandPrimary, ...fonts.semibold },
