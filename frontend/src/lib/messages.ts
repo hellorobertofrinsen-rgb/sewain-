@@ -37,9 +37,9 @@ export function followupMessage(lead: FollowupLead): string {
   return `Halo ${n}, aku mau follow-up soal hunian yang kamu cari${want ? ` (${want})` : ""}. Boleh info lagi lokasi, budget, dan kapan rencana pindahnya? Nanti aku carikan unit yang paling pas.`;
 }
 
-export function paymentReminderMessage(p: { name: string; unit_name: string; amount: number; due_date: string; period?: string; days_late?: number }): string {
+export function paymentReminderMessage(p: { name: string; unit_name: string; amount: number; due_date: string; period?: string; months?: number; days_late?: number }): string {
   const n = firstName(p.name);
-  const period = p.period ? ` ${periodLabel(p.period)}` : "";
+  const period = p.period ? ` ${periodLabel(p.period, p.months)}` : "";
   const late = (p.days_late ?? 0) > 0;
   return late
     ? `Halo ${n}, mau mengingatkan sewa unit ${p.unit_name}${period} sebesar ${rupiah(p.amount)} sudah lewat jatuh tempo (${dateLabel(p.due_date + "T00:00:00")}). Mohon dibantu transfernya ya, dan kirim bukti transfer kalau sudah. Terima kasih 🙏`
@@ -48,6 +48,18 @@ export function paymentReminderMessage(p: { name: string; unit_name: string; amo
 
 export function leaseRenewalMessage(t: { name: string; unit_name: string; end_date: string }): string {
   return `Halo ${firstName(t.name)}, kontrak sewa unit ${t.unit_name} akan berakhir ${dateLabel(t.end_date + "T00:00:00")}. Rencananya mau diperpanjang? Kabari aja ya, nanti aku siapkan perpanjangannya 🙂`;
+}
+
+export function ownerReportMessage(o: { name: string; units: number; terisi: number; kosong: number; paid: number; overdue: number }, days: number): string {
+  const lines = [
+    `Halo ${o.name}, update unit ${days} hari terakhir:`,
+    `• ${o.units} unit: ${o.terisi} terisi, ${o.kosong} kosong`,
+    `• Sewa masuk: ${rupiah(o.paid)}`,
+    o.overdue > 0 ? `• Belum masuk (lewat jatuh tempo): ${rupiah(o.overdue)} — sedang saya tagih` : `• Tidak ada tunggakan`,
+    "",
+    "Kalau ada pertanyaan, kabari saya ya 🙏",
+  ];
+  return lines.join("\n");
 }
 
 export function upgradeMessage(planLabel: string, price: number, email?: string): string {

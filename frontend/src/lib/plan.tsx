@@ -17,6 +17,9 @@ import { fonts, makeStyles, radius, spacing, useTheme, withAlpha } from "@/src/t
 export type PlanInfo = {
   plan: "free" | "premium" | "demo";
   label: string;
+  trial?: boolean;
+  trial_days_left?: number;
+  trial_ended?: boolean;
   premium_until: string | null;
   limits: { max_units: number | null; max_active_leads: number | null; bulk_import: boolean; export_data: boolean };
   usage: { units: number; active_leads: number };
@@ -81,9 +84,9 @@ export function usePlan() {
 
 const BENEFITS: { title: string; sub: string }[] = [
   { title: "Unit tanpa batas", sub: "Semua listing di satu tempat, berapa pun jumlahnya." },
-  { title: "Calon penyewa tanpa batas", sub: "Nggak ada lead yang kelewat karena kuota." },
+  { title: "Prospek tanpa batas", sub: "Nggak ada lead yang kelewat karena kuota." },
   { title: "Impor unit dari Excel / CSV", sub: "Pindahan data sekali jalan, nggak perlu input satu-satu." },
-  { title: "Export data kapan saja", sub: "Unit, calon penyewa, tenant, dan tagihan dalam CSV." },
+  { title: "Export data kapan saja", sub: "Unit, prospek, tenant, dan tagihan dalam CSV." },
 ];
 
 function headline(reason: UpgradeReason, plan?: PlanInfo): { title: string; sub: string } {
@@ -93,7 +96,7 @@ function headline(reason: UpgradeReason, plan?: PlanInfo): { title: string; sub:
     case "limit_units":
       return { title: `Kamu sudah punya ${maxUnits} unit`, sub: `Itu batas paket Free. Upgrade ke Premium untuk kelola semua unitmu tanpa batas.` };
     case "limit_leads":
-      return { title: `${maxLeads} calon penyewa aktif sudah penuh`, sub: "Upgrade ke Premium supaya setiap calon penyewa baru tetap tercatat." };
+      return { title: `${maxLeads} prospek aktif sudah penuh`, sub: "Upgrade ke Premium supaya setiap prospek baru tetap tercatat." };
     case "feature_bulk_import":
       return { title: "Impor CSV ada di Premium", sub: "Pindahkan semua unit dari Excel sekaligus." };
     case "feature_export":
@@ -127,7 +130,7 @@ function UpgradeSheet({ reason, plan, email, onClose }: { reason: UpgradeReason 
     <Sheet visible={!!reason} onClose={onClose} testID="upgrade-sheet" scroll>
       <View style={{ gap: spacing.lg }}>
         <View style={{ gap: 6 }}>
-          <StatusPill label="PREMIUM" tone="brand" testID="upgrade-pill" />
+          <StatusPill label="Premium" tone="brand" testID="upgrade-pill" />
           <RNText style={s.title}>{h.title}</RNText>
           <RNText style={s.sub}>{h.sub}</RNText>
         </View>
@@ -174,23 +177,23 @@ function UpgradeSheet({ reason, plan, email, onClose }: { reason: UpgradeReason 
 }
 
 const useStyles = makeStyles((colors) => ({
-  title: { color: colors.onSurface, fontFamily: fonts.bold, fontSize: 22, letterSpacing: -0.3, lineHeight: 28, marginTop: spacing.xs },
-  sub: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 14, lineHeight: 21 },
+  title: { color: colors.onSurface, ...fonts.bold, fontSize: 26, letterSpacing: -0.4, lineHeight: 32, marginTop: spacing.xs },
+  sub: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15.5, lineHeight: 21 },
   benefit: { flexDirection: "row", gap: spacing.md, alignItems: "flex-start" },
   check: {
     width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center",
     backgroundColor: withAlpha(colors.success, 0.14), marginTop: 1,
   },
-  benefitTitle: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 14 },
-  benefitSub: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 18 },
+  benefitTitle: { color: colors.onSurface, ...fonts.semibold, fontSize: 15.5 },
+  benefitSub: { color: colors.muted, ...fonts.regular, fontSize: 14, lineHeight: 18 },
   price: {
     flex: 1, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
-    backgroundColor: colors.surfaceTertiary, padding: spacing.md, gap: 2,
+    backgroundColor: colors.surfaceSecondary, padding: spacing.md, gap: 3,
   },
-  priceActive: { borderColor: colors.brandPrimary, backgroundColor: withAlpha(colors.brandPrimary, 0.06) },
-  best: { color: colors.success, fontFamily: fonts.semibold, fontSize: 10, letterSpacing: 0.8, marginBottom: 2 },
-  priceLabel: { color: colors.onSurfaceSecondary, fontFamily: fonts.medium, fontSize: 13 },
-  priceValue: { color: colors.onSurface, fontFamily: fonts.bold, fontSize: 18, letterSpacing: -0.2 },
-  priceSub: { color: colors.muted, fontFamily: fonts.regular, fontSize: 11.5, lineHeight: 16 },
-  note: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12, lineHeight: 18, textAlign: "center" },
+  priceActive: { borderColor: colors.brandPrimary, borderWidth: 2, backgroundColor: colors.brandTertiary },
+  best: { color: colors.brandPrimary, ...fonts.semibold, fontSize: 12, letterSpacing: 0.8, marginBottom: 2 },
+  priceLabel: { color: colors.onSurfaceSecondary, ...fonts.medium, fontSize: 14.5 },
+  priceValue: { color: colors.onSurface, ...fonts.bold, fontSize: 21, letterSpacing: -0.3 },
+  priceSub: { color: colors.muted, ...fonts.regular, fontSize: 13, lineHeight: 16 },
+  note: { color: colors.muted, ...fonts.regular, fontSize: 13.5, lineHeight: 18, textAlign: "center" },
 }));

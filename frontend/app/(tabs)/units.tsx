@@ -2,18 +2,21 @@ import React, { useState } from "react";
 import { FlatList, ScrollView, Text as RNText, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { usesNativeTabs } from "@/src/navigation";
-import { Icon } from "@/src/components/Icon";
 import { Sheet } from "@/src/components/Sheet";
+import { TabHeader } from "@/src/components/TabHeader";
+import { SplitView } from "@/src/components/SplitView";
+import { UnitDetail } from "@/app/unit/[id]";
+import { useIsWide } from "@/src/lib/layout";
+import { useParamTrigger } from "@/src/lib/useParamTrigger";
+import { STATE_TRANSITION } from "@/src/motion";
 import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Field, Input, Spinner, StatusPill, SwitchRow, PressableScale } from "@/src/components/ui";
 import { UnitThumb } from "@/src/components/UnitThumb";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
 import { usePlan } from "@/src/lib/plan";
-import { UNIT_STATUS, daysFromNow, rupiah } from "@/src/lib/format";
-import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { UNIT_STATUS, daysFromNow, rupiahShort } from "@/src/lib/format";
+import { fonts, makeStyles, spacing } from "@/src/theme";
 
 const STATUS_FILTERS = [
   { key: "semua", label: "Semua" },
@@ -28,15 +31,17 @@ const TYPE_OPTIONS = ["Studio", "1 Bedroom", "2 Bedroom", "Kost 3x3", "Kost 4x5"
 export default function UnitsScreen() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { colors } = useTheme();
   const s = useStyles();
-  const insets = useSafeAreaInsets();
-  const bottomChrome = usesNativeTabs ? insets.bottom : 0;
+  const wide = useIsWide();
   const params = useLocalSearchParams<{ status?: string }>();
   const [filter, setFilter] = useState(params.status || "semua");
   const [addOpen, setAddOpen] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
   const { plan, isFree, atUnitLimit, showUpgrade } = usePlan();
   const openAdd = () => (atUnitLimit ? showUpgrade("limit_units") : setAddOpen(true));
+
+  // "+" menu lands here with ?add=1.
+  useParamTrigger("add", () => setAddOpen(true));
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["units", filter],
@@ -82,15 +87,17 @@ export default function UnitsScreen() {
 
   const empty = !isLoading && data && data.length === 0;
 
-  return (
+  const counts = data ? { total: data.length, kosong: data.filter((u) => u.status === "kosong").length } : null;
+  const numColumns = 2;
+  const open = (id: string) => (wide ? setSelected(id) : router.push(`/unit/${id}` as any));
+
+  const list = (
     <View style={s.root}>
-      <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
-        <RNText style={s.title}>Unit</RNText>
-        <PressableScale testID="add-unit-button" onPress={openAdd} style={[s.addBtn]}>
-          <Icon name="plus" size={18} color={colors.onBrandPrimary} />
-          <RNText style={s.addText}>Tambah</RNText>
-        </PressableScale>
-      </View>
+      <TabHeader
+        title="Unit"
+        sub={counts && filter === "semua" ? `${counts.total} unit · ${counts.kosong} kosong` : null}
+        right={<Button title="Tambah" icon="plus" size="sm" onPress={openAdd} testID="add-unit-button" />}
+      />
 
       {isFree && plan ? (
         <PressableScale onPress={() => showUpgrade(plan.hidden_units > 0 ? "hidden_units" : "general")} testID="unit-usage">
@@ -111,46 +118,57 @@ export default function UnitsScreen() {
       {isLoading ? (
         <Spinner label="Memuat unit…" />
       ) : error ? (
-        <ErrorBox message={(error as any)?.message} onRetry={refetch} />
+        <View style={{ padding: spacing.lg }}><ErrorBox message={(error as any)?.message} onRetry={refetch} /></View>
       ) : (
         <FlatList
+          key={`cols-${numColumns}`}
           data={data || []}
           keyExtractor={(u) => u.id}
-          contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: bottomChrome + spacing.xxxl, gap: spacing.md, paddingTop: spacing.xs }}
+          numColumns={numColumns}
+          columnWrapperStyle={numColumns > 1 ? { gap: spacing.md } : undefined}
+          contentContainerStyle={s.gridContent}
           renderItem={({ item }) => (
-            <Card testID={`unit-card-${item.id}`} onPress={() => router.push(`/unit/${item.id}` as any)} style={{ padding: 0, overflow: "hidden" }}>
-              <View style={{ position: "relative" }}>
-                <UnitThumb photo={item.photos?.[0]} height={150} radiusSize={0} testID={`unit-thumb-${item.id}`} />
-                <View style={s.statusOverlay}>
-                  <StatusPill label={UNIT_STATUS[item.status] || item.status} tone={item.status === "kosong" ? "info" : item.status === "terisi" ? "success" : item.status === "reserved" ? "warning" : "error"} testID={`unit-status-${item.id}`} />
+            <View style={{ flex: 1 / numColumns }}>
+              <Card
+                testID={`unit-card-${item.id}`}
+                onPress={() => open(item.id)}
+                style={[STATE_TRANSITION, s.unitCard, wide && selected === item.id && s.unitCardSelected]}
+              >
+                <View>
+                  <UnitThumb photo={item.photos?.[0]} height={wide ? 130 : 118} radiusSize={0} testID={`unit-thumb-${item.id}`} />
+                  <View style={s.statusOverlay}>
+                    <StatusPill label={UNIT_STATUS[item.status] || item.status} tone={item.status === "kosong" ? "info" : item.status === "terisi" ? "success" : item.status === "reserved" ? "warning" : "error"} testID={`unit-status-${item.id}`} solid />
+                  </View>
                 </View>
-              </View>
-              <View style={{ padding: spacing.lg, gap: 2 }}>
-                <RNText style={s.unitName}>{item.name}</RNText>
-                <RNText style={s.unitSub}>{item.unit_type} · {item.property_name || "-"}</RNText>
-                <View style={s.cardFoot}>
-                  <RNText style={s.price}>
-                    {rupiah(item.monthly_price)}
-                    <RNText style={s.perMonth}> / bulan</RNText>
+                <View style={s.unitBody}>
+                  <RNText style={s.unitName} numberOfLines={1}>{item.name}</RNText>
+                  <RNText style={s.unitSub} numberOfLines={1}>{item.unit_type} · {item.property_name || "-"}</RNText>
+                  <RNText style={s.price} numberOfLines={1}>
+                    {rupiahShort(item.monthly_price)}
+                    <RNText style={s.perMonth}>/bln</RNText>
                   </RNText>
-                  {item.status === "kosong" ? (
-                    <RNText style={s.vacant}>Kosong {Math.max(daysFromNow(item.vacant_since) ?? 0, 0)} hari</RNText>
-                  ) : item.status === "reserved" && item.available_date ? (
-                    <RNText style={s.vacant}>Available {item.available_date}</RNText>
-                  ) : null}
+                  <RNText style={s.vacant} numberOfLines={1}>
+                    {item.status === "kosong"
+                      ? `Kosong ${Math.max(daysFromNow(item.vacant_since) ?? 0, 0)} hari`
+                      : item.status === "reserved" && item.available_date
+                        ? `Available ${item.available_date}`
+                        : item.status === "terisi"
+                          ? "Ada tenant"
+                          : " "}
+                  </RNText>
                 </View>
-              </View>
-            </Card>
+              </Card>
+            </View>
           )}
           ListEmptyComponent={
             empty ? (
               <EmptyState
-                icon="grid"
-                title={filter === "semua" ? "Belum ada unit terdaftar" : "Tidak ada unit di status ini"}
-                subtitle="Tambah unit manual, impor CSV, atau isi lewat halaman setup."
+                art="units"
+                title={filter === "semua" ? "Belum ada unit" : "Tidak ada unit di status ini"}
+                subtitle="Tambah unit yang kamu pasarkan. Sewain cocokkan dengan prospek yang masuk."
                 action={
-                  <View style={{ flexDirection: "row", gap: 8 }}>
-                    <Button title="Tambah Unit" onPress={openAdd} testID="empty-add-unit-button" />
+                  <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                    <Button title="Tambah Unit" icon="plus" onPress={openAdd} testID="empty-add-unit-button" />
                     <Button title="Halaman Setup" variant="ghost" onPress={() => router.push("/setup")} testID="empty-setup-button" />
                   </View>
                 }
@@ -159,7 +177,18 @@ export default function UnitsScreen() {
           }
         />
       )}
+    </View>
+  );
 
+  return (
+    <>
+      <SplitView
+        list={list}
+        listWidth={520}
+        detail={selected ? <UnitDetail key={selected} id={selected} embedded onGone={() => setSelected(null)} /> : null}
+        emptyArt="units"
+        emptyText="Pilih unit untuk lihat detail, pemilik, dan tenant-nya."
+      />
       <Sheet visible={addOpen} onClose={() => setAddOpen(false)} title="Tambah Unit" testID="add-unit-sheet" scroll>
         <View style={{ gap: spacing.md }}>
           {(properties?.length ?? 0) === 0 ? (
@@ -231,29 +260,21 @@ export default function UnitsScreen() {
           )}
         </View>
       </Sheet>
-    </View>
+    </>
   );
 }
 
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  title: { color: colors.onSurface, fontFamily: fonts.bold, fontSize: 26, letterSpacing: -0.4 },
-  addBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.brandPrimary, borderRadius: radius.md, paddingHorizontal: spacing.md, height: 40 },
-  addText: { color: colors.onBrandPrimary, fontFamily: fonts.semibold, fontSize: 13 },
-  cardHead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
-  statusOverlay: { position: "absolute", top: spacing.md, right: spacing.md },
-  unitName: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 16 },
-  unitSub: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 13 },
-  cardFoot: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.md },
-  price: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 15 },
-  perMonth: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12 },
-  vacant: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12 },
-  usage: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12, paddingHorizontal: spacing.lg, marginBottom: spacing.xs },
+  usage: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 14, paddingHorizontal: spacing.lg, marginTop: -4, marginBottom: spacing.sm },
+  gridContent: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xxxl, gap: spacing.md },
+  unitCard: { padding: 0, overflow: "hidden", borderWidth: 1.5, borderColor: "transparent" },
+  unitCardSelected: { borderColor: colors.brandPrimary },
+  statusOverlay: { position: "absolute", top: 10, left: 10 },
+  unitBody: { padding: 14, gap: 3 },
+  unitName: { color: colors.onSurface, ...fonts.semibold, fontSize: 17, letterSpacing: -0.2 },
+  unitSub: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 13.5 },
+  price: { color: colors.onSurface, ...fonts.bold, fontSize: 17, marginTop: 6 },
+  perMonth: { color: colors.muted, ...fonts.regular, fontSize: 13 },
+  vacant: { color: colors.muted, ...fonts.regular, fontSize: 13 },
 }));

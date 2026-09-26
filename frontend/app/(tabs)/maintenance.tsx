@@ -1,16 +1,15 @@
 import React, { useState } from "react";
 import { FlatList, Text as RNText, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { usesNativeTabs } from "@/src/navigation";
-import { Icon } from "@/src/components/Icon";
 import { Sheet } from "@/src/components/Sheet";
-import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Field, Spinner, StatusPill, SwitchRow, Textarea, PressableScale } from "@/src/components/ui";
+import { TabHeader } from "@/src/components/TabHeader";
+import { useParamTrigger } from "@/src/lib/useParamTrigger";
+import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Field, IconCircle, Spinner, StatusPill, SwitchRow, Textarea } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
 import { MAINT_STATUS, relTime } from "@/src/lib/format";
-import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { fonts, makeStyles, spacing } from "@/src/theme";
 
 const FILTERS = [
   { key: "semua", label: "Semua" },
@@ -22,12 +21,12 @@ const FILTERS = [
 export default function MaintenanceScreen() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { colors } = useTheme();
   const s = useStyles();
-  const insets = useSafeAreaInsets();
-  const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const [filter, setFilter] = useState("aktif");
   const [reportOpen, setReportOpen] = useState(false);
+
+  // "+" menu lands here with ?report=1.
+  useParamTrigger("report", () => setReportOpen(true));
   const [desc, setDesc] = useState("");
   const [unitId, setUnitId] = useState<string | null>(null);
   const [urgent, setUrgent] = useState(false);
@@ -80,13 +79,11 @@ export default function MaintenanceScreen() {
 
   return (
     <View style={s.root}>
-      <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
-        <RNText style={s.title}>Masalah</RNText>
-        <PressableScale testID="report-issue-button" onPress={() => setReportOpen(true)} style={[s.addBtn]}>
-          <Icon name="plus" size={18} color={colors.onBrandPrimary} />
-          <RNText style={s.addText}>Lapor</RNText>
-        </PressableScale>
-      </View>
+      <TabHeader
+        title="Masalah"
+        sub="Komplain tenant dan kerusakan unit."
+        right={<Button title="Lapor" icon="plus" size="sm" onPress={() => setReportOpen(true)} testID="report-issue-button" />}
+      />
 
       <ChipRow testID="maintenance-filter-row">
         {FILTERS.map((ft) => (
@@ -97,15 +94,16 @@ export default function MaintenanceScreen() {
       {isLoading ? (
         <Spinner label="Memuat masalah…" />
       ) : error ? (
-        <ErrorBox message={(error as any)?.message} onRetry={refetch} />
+        <View style={{ padding: spacing.lg }}><ErrorBox message={(error as any)?.message} onRetry={refetch} /></View>
       ) : (
         <FlatList
           data={filtered}
           keyExtractor={(m) => m.id}
-          contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: bottomChrome + spacing.xxxl, gap: spacing.md, paddingTop: spacing.xs }}
+          contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xxxl, gap: spacing.md, maxWidth: 760, width: "100%", alignSelf: "center" }}
           renderItem={({ item }) => (
             <Card testID={`maintenance-card-${item.id}`}>
               <View style={s.cardHead}>
+                <IconCircle icon="wrench" tone={item.status === "selesai" ? "success" : item.priority === "urgent" ? "error" : "warning"} size={42} />
                 <View style={{ flex: 1, gap: 3 }}>
                   <RNText style={s.unitName}>
                     {item.unit_name ? `Unit ${item.unit_name}` : "Area umum"} · {item.category}
@@ -113,7 +111,7 @@ export default function MaintenanceScreen() {
                   <RNText style={s.desc}>{item.description}</RNText>
                 </View>
                 {item.priority === "urgent" && item.status !== "selesai" ? (
-                  <StatusPill label="URGENT" tone="error" testID={`maint-urgent-${item.id}`} />
+                  <StatusPill label="Urgent" tone="error" testID={`maint-urgent-${item.id}`} />
                 ) : null}
               </View>
               <View style={s.cardFoot}>
@@ -131,7 +129,7 @@ export default function MaintenanceScreen() {
             </Card>
           )}
           ListEmptyComponent={
-            <EmptyState icon="wrench" title={filter === "selesai" ? "Belum ada masalah yang selesai" : "Tidak ada masalah aktif"} subtitle="Catat komplain tenant atau kerusakan unit di sini supaya nggak lupa ditindaklanjuti." />
+            <EmptyState art="issues" title={filter === "selesai" ? "Belum ada masalah yang selesai" : "Tidak ada masalah aktif"} subtitle="Catat komplain tenant atau kerusakan unit di sini supaya nggak lupa ditindaklanjuti." />
           }
         />
       )}
@@ -163,21 +161,10 @@ export default function MaintenanceScreen() {
 
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  title: { color: colors.onSurface, fontFamily: fonts.bold, fontSize: 26, letterSpacing: -0.4 },
-  addBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.brandPrimary, borderRadius: radius.md, paddingHorizontal: spacing.md, height: 40 },
-  addText: { color: colors.onBrandPrimary, fontFamily: fonts.semibold, fontSize: 13 },
   cardHead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
-  unitName: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 15 },
-  desc: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 13, lineHeight: 19 },
+  unitName: { color: colors.onSurface, ...fonts.semibold, fontSize: 17 },
+  desc: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15, lineHeight: 22 },
   cardFoot: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.md },
-  time: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12 },
-  actions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
-  note: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12, lineHeight: 17 },
+  time: { color: colors.muted, ...fonts.regular, fontSize: 14 },
+  actions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md, flexWrap: "wrap" },
 }));

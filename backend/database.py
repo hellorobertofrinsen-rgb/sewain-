@@ -10,7 +10,9 @@ load_dotenv(ROOT_DIR / '.env')
 MONGO_URL = os.environ['MONGO_URL']
 DB_NAME = os.environ.get('DB_NAME', 'sewain')
 
-client = AsyncIOMotorClient(MONGO_URL, serverSelectionTimeoutMS=10000)
+# tz_aware: datetimes come back as UTC-aware, so the API sends "...+00:00" and browsers
+# don't misread them as local time.
+client = AsyncIOMotorClient(MONGO_URL, serverSelectionTimeoutMS=10000, tz_aware=True)
 db = client[DB_NAME]
 
 users = db['users']

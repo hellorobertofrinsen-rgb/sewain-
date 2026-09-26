@@ -12,7 +12,8 @@ import { Icon } from "@/src/components/Icon";
 import { DateInput } from "@/src/components/DateInput";
 import { FollowupSheet } from "@/src/components/ActionSheets";
 import { LeadForm, LeadFormValue, formToBody, leadToForm } from "@/src/components/LeadForm";
-import { Button, Card, Chip, ErrorBox, Field, Input, SectionTitle, Spinner, StatusPill, Textarea, PressableScale } from "@/src/components/ui";
+import { Button, Card, Chip, ErrorBox, Field, Input, ListGroup, ListRow, SectionTitle, Spinner, StatusPill, Textarea, PressableScale } from "@/src/components/ui";
+import { useCelebrate } from "@/src/components/Celebrate";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
 import { waLink } from "@/src/lib/messages";
@@ -32,8 +33,13 @@ const stageIndex = (status: string) => {
 };
 const MONTH_OPTIONS = [1, 3, 6, 12, 24];
 
-export default function LeadDetail() {
+export default function LeadDetailRoute() {
   const { id, open } = useLocalSearchParams<{ id: string; open?: string }>();
+  return <LeadDetail id={id} open={open} />;
+}
+
+/** Also rendered inline in the desktop split view (embedded). */
+export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: string; embedded?: boolean; onGone?: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { colors } = useTheme();
@@ -59,19 +65,20 @@ export default function LeadDetail() {
     onSuccess: () => { invalidate(); toast("Unit dipilih ✓"); },
     onError: onErr,
   });
+  const [lostReason, setLostReason] = useState<string | null>(null);
   const markLost = useMutation({
-    mutationFn: () => api(`/leads/${id}/not-interested`, { method: "POST" }),
+    mutationFn: () => api(`/leads/${id}/not-interested`, { method: "POST", body: { reason: lostReason } }),
     onSuccess: () => { invalidate(); setSheet(null); toast("Ditandai tidak jadi"); },
     onError: onErr,
   });
   const reopen = useMutation({
     mutationFn: () => api(`/leads/${id}/reopen`, { method: "POST" }),
-    onSuccess: () => { invalidate(); toast("Calon penyewa aktif lagi"); },
+    onSuccess: () => { invalidate(); toast("Prospek aktif lagi"); },
     onError: onErr,
   });
 
-  if (isLoading) return <View style={s.root}><Spinner label="Memuat calon penyewa…" /></View>;
-  if (error || !lead) return <View style={s.root}><ScreenHeader title="Calon penyewa" /><ErrorBox message={(error as any)?.message || "Tidak ditemukan"} onRetry={refetch} /></View>;
+  if (isLoading) return <View style={s.root}><Spinner label="Memuat prospek…" /></View>;
+  if (error || !lead) return <View style={s.root}><ScreenHeader embedded={embedded} title="Prospek" /><ErrorBox message={(error as any)?.message || "Tidak ditemukan"} onRetry={refetch} /></View>;
 
   const status: string = lead.status;
   const closed = status === "deal" || status === "tidak_jadi";
@@ -84,7 +91,7 @@ export default function LeadDetail() {
 
   return (
     <View style={s.root}>
-      <ScreenHeader
+      <ScreenHeader embedded={embedded}
         title={lead.name}
         right={
           <PressableScale testID="lead-edit-button" onPress={() => setSheet("edit")} style={s.headerBtn} accessibilityLabel="Edit">
@@ -92,7 +99,7 @@ export default function LeadDetail() {
           </PressableScale>
         }
       />
-      <ScrollView contentContainerStyle={[s.body, { paddingBottom: insets.bottom + spacing.xxxl }]} showsVerticalScrollIndicator={false} testID="lead-detail-screen">
+      <ScrollView contentContainerStyle={[s.body, { paddingBottom: (embedded ? 0 : insets.bottom) + spacing.xxxl }]} showsVerticalScrollIndicator={false} testID="lead-detail-screen">
         {/* Stage */}
         {status === "tidak_jadi" ? (
           <StatusPill label="Tidak jadi" tone="neutral" testID="lead-status-pill" />
@@ -100,7 +107,7 @@ export default function LeadDetail() {
           <View style={s.stages} testID="lead-stages">
             {STAGES.map((st, i) => (
               <View key={st.key} style={{ flex: 1, gap: 6 }}>
-                <Animated.View style={[STATE_TRANSITION, s.stageBar, i <= stage && { backgroundColor: status === "deal" ? colors.success : colors.onSurface }]} />
+                <Animated.View style={[STATE_TRANSITION, s.stageBar, i <= stage && { backgroundColor: status === "deal" ? colors.success : colors.brandPrimary }]} />
                 <RNText style={[s.stageLabel, i === stage && s.stageLabelActive]}>{st.label}</RNText>
               </View>
             ))}
@@ -117,7 +124,7 @@ export default function LeadDetail() {
             </>
           ) : status === "tidak_jadi" ? (
             <>
-              <RNText style={s.stepText}>Calon penyewa ini ditandai tidak jadi.</RNText>
+              <RNText style={s.stepText}>Prospek ini ditandai tidak jadi.</RNText>
               <Button title="Aktifkan Lagi" variant="ghost" onPress={() => reopen.mutate()} loading={reopen.isPending} testID="lead-reopen" style={s.stepBtn} />
             </>
           ) : status === "negotiation" ? (
@@ -163,28 +170,29 @@ export default function LeadDetail() {
         </Card>
 
         {/* Profile */}
-        <Card>
+        <ListGroup title="Profil" testID="lead-profile">
           {lead.phone ? (
-            <PressableScale role="link" onPress={() => wa && Linking.openURL(wa)} style={[s.infoRow, s.rowBorder]} testID="lead-phone-row">
-              <RNText style={s.rowLabel}>WhatsApp</RNText>
-              <RNText style={[s.rowValue, wa ? { color: colors.info } : null]}>{lead.phone}</RNText>
-            </PressableScale>
+            <ListRow label="WhatsApp" value={lead.phone} icon="phone" tone="success" onPress={wa ? () => Linking.openURL(wa) : undefined} testID="lead-phone-row" />
           ) : null}
-          <Row label="Budget" value={lead.budget_max || lead.budget_min ? `${rupiah(lead.budget_max || lead.budget_min)} / bulan` : "-"} />
-          <Row label="Cari tipe" value={lead.unit_type || "-"} />
-          <Row label="Lokasi" value={lead.preferred_location || "-"} />
-          <Row label="Rencana pindah" value={lead.move_in_date || "-"} last={!lead.occupants} />
-          {lead.occupants ? <Row label="Jumlah orang" value={`${lead.occupants}`} last /> : null}
-          {lead.requirements?.length ? (
-            <View style={s.reqs}>
-              {lead.requirements.map((r: string, i: number) => (
-                <StatusPill key={i} label={r} tone="neutral" testID={`lead-requirement-${i}`} />
-              ))}
-            </View>
-          ) : null}
-          {lead.notes || lead.summary || lead.ai_note ? <RNText style={s.notes}>{lead.notes || lead.summary || lead.ai_note}</RNText> : null}
-          {lead.quote ? <RNText style={s.quote}>“{lead.quote}”</RNText> : null}
-        </Card>
+          <ListRow label="Budget" value={lead.budget_max || lead.budget_min ? `${rupiahShort(lead.budget_max || lead.budget_min)}/bln` : "-"} icon="wallet" tone="brand" />
+          <ListRow label="Cari tipe" value={lead.unit_type || "-"} icon="building" tone="info" />
+          <ListRow label="Lokasi" value={lead.preferred_location || "-"} icon="globe" tone="neutral" />
+          <ListRow label="Rencana pindah" value={lead.move_in_date || "-"} icon="calendar-check" tone="warning" />
+          {lead.occupants ? <ListRow label="Jumlah orang" value={`${lead.occupants}`} icon="users" tone="neutral" /> : null}
+        </ListGroup>
+        {lead.requirements?.length || lead.notes || lead.summary || lead.ai_note || lead.quote ? (
+          <Card>
+            {lead.requirements?.length ? (
+              <View style={[s.reqs, { marginTop: 0 }]}>
+                {lead.requirements.map((r: string, i: number) => (
+                  <StatusPill key={i} label={r} tone="neutral" testID={`lead-requirement-${i}`} />
+                ))}
+              </View>
+            ) : null}
+            {lead.notes || lead.summary || lead.ai_note ? <RNText style={[s.notes, !lead.requirements?.length && { marginTop: 0 }]}>{lead.notes || lead.summary || lead.ai_note}</RNText> : null}
+            {lead.quote ? <RNText style={s.quote}>“{lead.quote}”</RNText> : null}
+          </Card>
+        ) : null}
 
         {/* Matching */}
         {!closed ? (
@@ -252,9 +260,39 @@ export default function LeadDetail() {
       {sheet === "deal" && !closed ? <DealSheet lead={lead} onClose={() => setSheet(null)} onDone={done} onErr={onErr} /> : null}
 
       <Sheet visible={sheet === "lost"} onClose={() => setSheet(null)} title={`${lead.name} tidak jadi?`} testID="lost-sheet">
-        <RNText style={s.note}>Calon penyewa dipindah ke “Tidak jadi” dan tidak dihitung sebagai calon aktif. Bisa diaktifkan lagi kapan saja.</RNText>
-        <Button title="Ya, Tidak Jadi" variant="danger" onPress={() => markLost.mutate()} loading={markLost.isPending} testID="lost-confirm-button" style={{ marginTop: spacing.lg }} />
+        <View style={{ gap: spacing.md }}>
+          <Field label="Alasannya? (membantu lihat pola di Laporan)">
+            <View style={s.wrap}>
+              {LOST_REASONS.map((r) => (
+                <Chip key={r} label={r} active={lostReason === r} onPress={() => setLostReason(lostReason === r ? null : r)} testID={`lost-reason-${LOST_REASONS.indexOf(r)}`} />
+              ))}
+            </View>
+          </Field>
+          <RNText style={s.note}>Prospek dipindah ke “Tidak jadi” dan tidak dihitung sebagai prospek aktif. Bisa diaktifkan lagi kapan saja.</RNText>
+          <Button title="Ya, Tidak Jadi" variant="danger" onPress={() => markLost.mutate()} loading={markLost.isPending} testID="lost-confirm-button" />
+        </View>
       </Sheet>
+    </View>
+  );
+}
+
+const LOST_REASONS = ["Harga terlalu mahal", "Lokasi kurang cocok", "Sudah dapat tempat lain", "Tidak ada kabar", "Unit tidak sesuai"];
+
+// How often the tenant pays: many rentals are paid 6 or 12 months upfront.
+const INTERVALS = [
+  { m: 1, label: "Bulanan" },
+  { m: 3, label: "3 bulan" },
+  { m: 6, label: "6 bulan" },
+  { m: 12, label: "Tahunan" },
+];
+
+function IntervalChips({ value, onChange, prefix }: { value: number; onChange: (m: number) => void; prefix: string }) {
+  const s = useStyles();
+  return (
+    <View style={s.wrap}>
+      {INTERVALS.map((it) => (
+        <Chip key={it.m} label={it.label} active={value === it.m} onPress={() => onChange(it.m)} testID={`${prefix}-interval-${it.m}`} />
+      ))}
     </View>
   );
 }
@@ -335,13 +373,18 @@ function NegotiationSheet({ lead, onClose, onDone, onErr }: SheetProps) {
     price: moneyInput(t.agreed_price ?? lead.matched_unit?.monthly_price),
     deposit: moneyInput(t.deposit),
     months: t.contract_months || 12,
+    interval: t.payment_interval_months || 1,
+    commission: moneyInput(t.commission),
     note: t.note || "",
   });
   const save = useMutation({
     mutationFn: () =>
       api(`/leads/${lead.id}/negotiation`, {
         method: "POST",
-        body: { unit_id: n.unit || null, agreed_price: parseMoney(n.price), deposit: parseMoney(n.deposit), contract_months: n.months, note: n.note.trim() || null },
+        body: {
+          unit_id: n.unit || null, agreed_price: parseMoney(n.price), deposit: parseMoney(n.deposit), contract_months: n.months,
+          payment_interval_months: n.interval, commission: parseMoney(n.commission), note: n.note.trim() || null,
+        },
       }),
     onSuccess: () => onDone("Negosiasi tersimpan ✓"),
     onError: onErr,
@@ -367,6 +410,12 @@ function NegotiationSheet({ lead, onClose, onDone, onErr }: SheetProps) {
             ))}
           </View>
         </Field>
+        <Field label="Dibayar tiap">
+          <IntervalChips value={n.interval} onChange={(m) => setN({ ...n, interval: m })} prefix="nego" />
+        </Field>
+        <Field label="Komisi kamu (opsional)" hint="Hanya kamu yang lihat. Dijumlahkan di Laporan.">
+          <Input testID="nego-commission-input" value={n.commission} onChangeText={(x) => setN({ ...n, commission: moneyInput(parseMoney(x)) })} keyboardType="numeric" placeholder="1.500.000" />
+        </Field>
         <Field label="Catatan (opsional)">
           <Textarea testID="nego-note-input" value={n.note} onChangeText={(x) => setN({ ...n, note: x })} placeholder="mis. owner OK turun 200rb kalau 12 bulan" style={{ minHeight: 70 }} />
         </Field>
@@ -388,16 +437,24 @@ function DealSheet({ lead, onClose, onDone, onErr }: SheetProps) {
     due: "10",
     rent: moneyInput(t.agreed_price ?? lead.matched_unit?.monthly_price),
     deposit: moneyInput(t.deposit),
+    interval: t.payment_interval_months || 1,
+    commission: moneyInput(t.commission),
   });
+  const { celebrate } = useCelebrate();
   const save = useMutation({
     mutationFn: () =>
       api<any>(`/leads/${lead.id}/deal`, {
         method: "POST",
-        body: { unit_id: d.unit || null, start_date: d.start, contract_months: d.months, due_day: parseInt(d.due || "10", 10) || 10, monthly_rent: parseMoney(d.rent), deposit: parseMoney(d.deposit) },
+        body: {
+          unit_id: d.unit || null, start_date: d.start, contract_months: d.months, due_day: parseInt(d.due || "10", 10) || 10,
+          monthly_rent: parseMoney(d.rent), deposit: parseMoney(d.deposit), payment_interval_months: d.interval,
+          commission: parseMoney(d.commission),
+        },
       }),
     onSuccess: (r: any) => {
-      onDone("Deal! Tenant baru tercatat dan tagihan dibuat ✓");
-      router.replace(`/tenant/${r.tenant_id}` as any);
+      onDone("Tenant baru tercatat dan tagihan dibuat ✓");
+      celebrate(`Deal dengan ${lead.name}!`, "Tenant baru tercatat. Tagihannya sudah Sewain buatkan.");
+      router.push(`/tenant/${r.tenant_id}` as any);
     },
     onError: onErr,
   });
@@ -430,48 +487,40 @@ function DealSheet({ lead, onClose, onDone, onErr }: SheetProps) {
             ))}
           </View>
         </Field>
+        <Field label="Dibayar tiap">
+          <IntervalChips value={d.interval} onChange={(m) => setD({ ...d, interval: m })} prefix="deal" />
+        </Field>
+        <Field label="Komisi kamu (opsional)">
+          <Input testID="deal-commission-input" value={d.commission} onChangeText={(x) => setD({ ...d, commission: moneyInput(parseMoney(x)) })} keyboardType="numeric" placeholder="1.500.000" />
+        </Field>
         <Button title="Jadikan Tenant" onPress={() => save.mutate()} loading={save.isPending} disabled={!d.unit} testID="deal-save-button" />
-        <RNText style={s.note}>Unit jadi TERISI, tagihan bulanan dibuat, dan semua catatan calon penyewa ikut pindah ke data tenant.</RNText>
+        <RNText style={s.note}>Unit jadi terisi, tagihan dibuat sesuai jadwal bayar, dan semua catatan prospek ikut pindah ke data tenant.</RNText>
       </View>
     </Sheet>
   );
 }
 
-function Row({ label, value, last }: { label: string; value: string; last?: boolean }) {
-  const s = useStyles();
-  return (
-    <View style={[s.infoRow, !last && s.rowBorder]}>
-      <RNText style={s.rowLabel}>{label}</RNText>
-      <RNText style={s.rowValue}>{value}</RNText>
-    </View>
-  );
-}
-
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
-  body: { padding: spacing.lg, gap: spacing.lg, maxWidth: 720, width: "100%", alignSelf: "center" },
-  headerBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20 },
+  body: { padding: spacing.lg, gap: spacing.xl, maxWidth: 720, width: "100%", alignSelf: "center" },
+  headerBtn: { width: 42, height: 42, alignItems: "center", justifyContent: "center", borderRadius: 21, backgroundColor: colors.surfaceSecondary },
   stages: { flexDirection: "row", gap: 6 },
-  stageBar: { height: 4, borderRadius: 2, backgroundColor: colors.surfaceTertiary },
-  stageLabel: { color: colors.muted, fontFamily: fonts.regular, fontSize: 11 },
-  stageLabelActive: { color: colors.onSurface, fontFamily: fonts.semibold },
-  kicker: { color: colors.muted, fontFamily: fonts.medium, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 },
-  stepText: { color: colors.onSurface, fontFamily: fonts.medium, fontSize: 15, lineHeight: 22 },
-  stepBtn: { marginTop: spacing.md },
+  stageBar: { height: 6, borderRadius: 3, backgroundColor: colors.border },
+  stageLabel: { color: colors.muted, ...fonts.regular, fontSize: 12.5 },
+  stageLabelActive: { color: colors.onSurface, ...fonts.semibold },
+  kicker: { color: colors.brandPrimary, ...fonts.semibold, fontSize: 14, marginBottom: 6 },
+  stepText: { color: colors.onSurface, ...fonts.semibold, fontSize: 19, lineHeight: 26, letterSpacing: -0.2 },
+  stepBtn: { marginTop: spacing.lg },
   row: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm, flexWrap: "wrap" },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
-  infoRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 9 },
-  rowBorder: { borderBottomWidth: 1, borderBottomColor: colors.divider },
-  rowLabel: { color: colors.muted, fontFamily: fonts.regular, fontSize: 13 },
-  rowValue: { color: colors.onSurfaceTertiary, fontFamily: fonts.medium, fontSize: 13, textAlign: "right", flex: 1, marginLeft: spacing.lg },
-  reqs: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: spacing.md },
-  notes: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 13.5, lineHeight: 20, marginTop: spacing.md },
-  quote: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontStyle: "italic", fontSize: 13, lineHeight: 19, marginTop: spacing.sm },
-  matchName: { color: colors.onSurface, fontFamily: fonts.bold, fontSize: 18 },
-  suggestName: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 15 },
-  reasons: { color: colors.success, fontFamily: fonts.regular, fontSize: 12, marginTop: 6 },
-  itemSub: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 13, flex: 1 },
-  muted: { color: colors.muted, fontFamily: fonts.regular, fontSize: 13, lineHeight: 19 },
-  note: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12, lineHeight: 17 },
+  reqs: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: spacing.md },
+  notes: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15.5, lineHeight: 23, marginTop: spacing.md },
+  quote: { color: colors.onSurfaceSecondary, ...fonts.regular, fontStyle: "italic", fontSize: 15, lineHeight: 22, marginTop: spacing.sm },
+  matchName: { color: colors.onSurface, ...fonts.bold, fontSize: 20 },
+  suggestName: { color: colors.onSurface, ...fonts.semibold, fontSize: 17 },
+  reasons: { color: colors.success, ...fonts.medium, fontSize: 13.5, marginTop: 8 },
+  itemSub: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15, flex: 1 },
+  muted: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15, lineHeight: 21 },
+  note: { color: colors.muted, ...fonts.regular, fontSize: 13.5, lineHeight: 19 },
 }));

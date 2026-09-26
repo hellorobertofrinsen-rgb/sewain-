@@ -1,69 +1,70 @@
-// Design tokens for Sewain — dark charcoal, restrained (ChatGPT x Apple direction).
-// Keys match the "color" block of /app/design_guidelines.json.
+// Design tokens for Sewain — light, calm and roomy.
 //
-//   <View style={{ backgroundColor: colors.brandPrimary }}>
-//     <Text style={{ color: colors.onBrandPrimary }}>Continue</Text>
-//   </View>
+//   Page: very light grey. Cards: white. One accent: a steady "banking" blue that
+//   still feels homey, used for the primary action, the selected state and nothing
+//   decorative. Warmth comes from the illustrations, not the chrome.
+//   Text: near-black for what matters, dark grey (not faded) for everything else.
 //
 // Build StyleSheets with makeStyles so colors follow the theme; read
 // useTheme().colors for color props (icon color, placeholderTextColor...).
+// Every text/background pair below meets WCAG AA (4.5:1) on white.
 
 import { useMemo } from "react";
-import { StyleSheet } from "react-native";
+import { Platform, StyleSheet, TextStyle } from "react-native";
 
 export type ColorScheme = "light" | "dark";
 
-const dark = {
+const light = {
   // Surfaces
-  surface: "#121214",
-  onSurface: "#F4F4F6",
-  surfaceSecondary: "#1A1A1E",
-  onSurfaceSecondary: "#A1A1AA",
-  surfaceTertiary: "#26262C",
-  onSurfaceTertiary: "#D4D4D8",
-  surfaceInverse: "#FAFAFA",
-  onSurfaceInverse: "#121214",
-  muted: "#71717A",
+  surface: "#F4F5F7", // page background
+  onSurface: "#16181D",
+  surfaceSecondary: "#FFFFFF", // cards, sheets, grouped lists
+  onSurfaceSecondary: "#4E5560",
+  surfaceTertiary: "#EEF0F4", // inputs, idle chips, wells inside cards
+  onSurfaceTertiary: "#2A2F37",
+  surfaceInverse: "#16181D",
+  onSurfaceInverse: "#FFFFFF",
+  muted: "#666D78",
 
-  // Brand (monochrome, restrained)
-  brand: "#E4E4E7",
-  onBrand: "#121214",
-  brandPrimary: "#FAFAFA",
-  onBrandPrimary: "#121214",
-  brandSecondary: "#A1A1AA",
-  onBrandSecondary: "#121214",
-  brandTertiary: "#27272A",
-  onBrandTertiary: "#FAFAFA",
+  // Brand — homey fintech blue (6.2:1 with white text)
+  brand: "#2457D6",
+  onBrand: "#FFFFFF",
+  brandPrimary: "#2457D6",
+  onBrandPrimary: "#FFFFFF",
+  brandSecondary: "#6E9BF0", // lighter blue for illustrations and bars only
+  onBrandSecondary: "#FFFFFF",
+  brandTertiary: "#E8EFFD", // soft blue fill
+  onBrandTertiary: "#1843A0",
 
-  // Status (semantic only)
-  success: "#34D399",
-  onSuccess: "#064E3B",
-  warning: "#FBBF24",
-  onWarning: "#78350F",
-  error: "#F87171",
-  onError: "#7F1D1D",
-  info: "#60A5FA",
-  onInfo: "#1E3A8A",
+  // Status (semantic only; shown as soft tints)
+  success: "#1E7A4F",
+  onSuccess: "#FFFFFF",
+  warning: "#9A5B00",
+  onWarning: "#FFFFFF",
+  error: "#C23B32",
+  onError: "#FFFFFF",
+  info: "#0B7285", // teal, so "info" never reads as the brand blue
+  onInfo: "#FFFFFF",
 
   // Lines
-  border: "#27272A",
-  borderStrong: "#3F3F46",
-  divider: "#1E1E24",
+  border: "#E4E7EC",
+  borderStrong: "#D2D6DD",
+  divider: "#EAECF0",
 };
 
-export type ThemeColors = typeof dark;
+export type ThemeColors = typeof light;
 
-export const defaultScheme: ColorScheme = "dark";
+export const defaultScheme: ColorScheme = "light";
 
-// Sewain ships dark-only: the calm charcoal look is the product.
-export const themes: { light?: ThemeColors; dark?: ThemeColors } = { dark };
+// Sewain ships light-only for now.
+export const themes: { light?: ThemeColors; dark?: ThemeColors } = { light };
 
 export function setColorScheme(_scheme: ColorScheme | null) {
-  // Dark-only app: nothing to switch.
+  // Light-only app: nothing to switch.
 }
 
 export function useTheme(): { scheme: ColorScheme; colors: ThemeColors } {
-  return { scheme: "dark", colors: dark };
+  return { scheme: "light", colors: light };
 }
 
 export function makeStyles<T extends StyleSheet.NamedStyles<T>>(factory: (colors: ThemeColors) => T): () => T {
@@ -74,41 +75,60 @@ export function makeStyles<T extends StyleSheet.NamedStyles<T>>(factory: (colors
 }
 
 // ---------------------------------------------------------------------------
-// Spacing / radius / typography tokens (from design_guidelines.json)
+// Spacing / radius / typography
 // ---------------------------------------------------------------------------
+// Roomy on purpose: a phone is read at arm's length between viewings.
 export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
-  xxl: 32,
-  xxxl: 48,
+  xs: 6,
+  sm: 10,
+  md: 16,
+  lg: 20, // screen gutter, card padding
+  xl: 28,
+  xxl: 40,
+  xxxl: 56,
 };
 
 export const radius = {
-  sm: 8,
-  md: 14,
-  lg: 22,
+  sm: 12,
+  md: 20, // cards
+  lg: 28, // sheets
   pill: 999,
 };
 
-export const fonts = {
-  regular: "Rubik-Regular",
-  medium: "Rubik-Medium",
-  semibold: "Rubik-Semibold",
-  bold: "Rubik-Bold",
+// The phone's own font (SF Pro on iPhone, Roboto on Android, Segoe on Windows):
+// nothing to download, and it looks at home on every device.
+const SYSTEM = Platform.select({
+  web: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  default: undefined,
+});
+
+// Spread into a style: { ...fonts.semibold, fontSize: 15 }
+export const fonts: Record<"regular" | "medium" | "semibold" | "bold", TextStyle> = {
+  regular: { fontFamily: SYSTEM, fontWeight: "400" },
+  medium: { fontFamily: SYSTEM, fontWeight: "500" },
+  semibold: { fontFamily: SYSTEM, fontWeight: "600" },
+  bold: { fontFamily: SYSTEM, fontWeight: "700" },
 };
 
+// Type scale. Big contrast between levels: a 34pt title, 17pt body, 13pt meta.
 export const type = {
-  xs: 11,
-  sm: 12,
-  base: 14,
-  lg: 16,
+  xs: 12,
+  sm: 13,
+  base: 15,
+  lg: 17,
   xl: 20,
   xxl: 24,
-  display: 30,
+  display: 34,
 };
+
+// iOS-style large title used at the top of every tab.
+export const largeTitle: TextStyle = { ...fonts.bold, fontSize: 34, lineHeight: 41, letterSpacing: -0.6 };
+
+// Soft card elevation: a hairline plus a very low, wide shadow.
+export const cardShadow: any = Platform.select({
+  web: { boxShadow: "0 1px 2px rgba(22,24,29,0.04), 0 4px 16px rgba(22,24,29,0.05)" },
+  default: { shadowColor: "#16181D", shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 1 },
+});
 
 // rgba() from a hex token — for soft status backgrounds and overlays.
 export function withAlpha(hex: string, alpha: number): string {

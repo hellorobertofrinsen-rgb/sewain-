@@ -116,6 +116,7 @@ export type ReminderTarget = {
   amount: number;
   due_date: string;
   period?: string;
+  months?: number;
   days_late?: number;
   phone?: string | null;
 };
@@ -224,7 +225,7 @@ function LeaseBody({ tenant, onClose }: { tenant: LeaseTarget; onClose: () => vo
 const useStyles = makeStyles((colors) => ({
   row: { flexDirection: "row", gap: spacing.sm },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  label: { color: colors.onSurfaceSecondary, fontFamily: fonts.medium, fontSize: 13 },
-  note: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12, lineHeight: 17 },
-  meta: { color: colors.onSurfaceSecondary, fontFamily: fonts.medium, fontSize: 13 },
+  label: { color: colors.onSurfaceSecondary, ...fonts.medium, fontSize: 14.5 },
+  note: { color: colors.muted, ...fonts.regular, fontSize: 13.5, lineHeight: 17 },
+  meta: { color: colors.onSurfaceSecondary, ...fonts.medium, fontSize: 14.5 },
 }));

@@ -5,6 +5,7 @@ restart, which is fine for slowing down password guessing and demo-account spam)
 """
 from __future__ import annotations
 
+import os
 import time
 from collections import defaultdict, deque
 
@@ -24,6 +25,8 @@ def client_ip(request: Request) -> str:
 
 def hit(key: str, limit: int, window_seconds: int) -> None:
     """Count one attempt for key; 429 once more than `limit` happen within the window."""
+    if os.environ.get('SEWAIN_DISABLE_RATE_LIMIT') == '1':  # local e2e runs only
+        return
     now = time.monotonic()
     q = _hits[key]
     while q and q[0] <= now - window_seconds:

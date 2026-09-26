@@ -1,17 +1,63 @@
 {
-  "name": "Sewain — AI admin sewa properti",
+  "name": "Sewain — admin sewa properti",
   "short_name": "Sewain",
-  "description": "Admin buat bisnis sewa properti: calon penyewa, unit, viewing, deal, tenant, dan tagihan di satu tempat.",
+  "description": "Kelola prospek, unit, dan tenant di satu tempat: balas lebih cepat, prospek nggak hilang, tenant betah.",
   "lang": "id",
   "start_url": "/today",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#121214",
-  "theme_color": "#121214",
+  "background_color": "#F4F5F7",
+  "theme_color": "#F4F5F7",
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "share_target": {
+    "action": "/lead/new",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "shortcuts": [
+    {
+      "name": "Prospek baru",
+      "url": "/lead/new",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Hari Ini",
+      "url": "/today",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
   ]
 }

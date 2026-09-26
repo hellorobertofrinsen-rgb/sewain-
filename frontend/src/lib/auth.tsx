@@ -1,11 +1,24 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { router } from "expo-router";
-import { usePathname } from "expo-router";
+import { router, usePathname } from "expo-router";
 import { api, markAuthReady, setAuthToken } from "./api";
 import { storage } from "@/src/utils/storage";
 import { queryClient } from "@/src/query-client";
 
-export type User = { id: string; name: string; email: string; is_demo: boolean; plan: "free" | "premium" | "demo" };
+export type User = { id: string; name: string; email: string; is_demo: boolean; plan: "free" | "premium" | "demo"; timezone?: string };
+export type Session = { token: string; user: User };
+
+// Pages anyone can open without an account.
+export const PUBLIC_PATHS = ["/", "/privasi", "/ketentuan", "/reset"];
+
+const ZONES = ["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura"];
+function deviceZone(): string | undefined {
+  try {
+    const z = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return ZONES.includes(z) ? z : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const TOKEN_KEY = "sewain_token";
 const USER_KEY = "sewain_user"; // last known profile, so the installed app still opens offline
@@ -18,6 +31,8 @@ type AuthCtx = {
   register: (name: string, email: string, password: string) => Promise<void>;
   demo: () => Promise<void>;
   logout: () => Promise<void>;
+  applySession: (res: Session) => Promise<void>;
+  setUserProfile: (u: User) => Promise<void>;
 };
 
 const Ctx = createContext<AuthCtx>(null as any);
@@ -58,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!init) return;
-    if (!user && pathname !== "/") router.replace("/");
+    if (!user && !PUBLIC_PATHS.includes(pathname)) router.replace("/");
     if (user && pathname === "/") router.replace("/today");
   }, [init, user, pathname]);
 
@@ -83,7 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = async (name: string, email: string, password: string) => {
     const res = await api<{ token: string; user: User }>("/auth/register", {
       method: "POST",
-      body: { name, email, password },
+      body: { name, email, password, timezone: deviceZone() },
     });
     await apply(res);
   };
@@ -91,6 +106,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const demo = async () => {
     const res = await api<{ token: string; user: User }>("/auth/demo", { method: "POST" });
     await apply(res);
+  };
+
+  const setUserProfile = async (u: User) => {
+    await storage.setItem(USER_KEY, JSON.stringify(u));
+    setUser(u);
   };
 
   const logout = async () => {
@@ -104,7 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ user, init, token, login, register, demo, logout }}>
+    <Ctx.Provider value={{ user, init, token, login, register, demo, logout, applySession: apply, setUserProfile }}>
       {children}
     </Ctx.Provider>
   );

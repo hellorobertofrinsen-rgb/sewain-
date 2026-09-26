@@ -7,15 +7,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenHeader } from "@/src/components/ScreenHeader";
 import { Sheet } from "@/src/components/Sheet";
 import { LeaseSheet, LeaseTarget, ReminderSheet, ReminderTarget } from "@/src/components/ActionSheets";
-import { Button, Card, ErrorBox, SectionTitle, Spinner, StatusPill, PressableScale } from "@/src/components/ui";
+import { Button, Card, ErrorBox, ListGroup, ListRow, SectionTitle, Spinner, StatusPill, PressableScale } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
 import { waLink } from "@/src/lib/messages";
-import { dateLabel, leaseLeftLabel, periodLabel, rupiah } from "@/src/lib/format";
+import { dateLabel, leaseLeftLabel, periodLabel, rupiah, rupiahShort } from "@/src/lib/format";
 import { fonts, makeStyles, spacing, useTheme, withAlpha } from "@/src/theme";
 
-export default function TenantDetail() {
+export default function TenantDetailRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  return <TenantDetail id={id} />;
+}
+
+/** Also rendered inline in the desktop split view (embedded). */
+export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: boolean; onGone?: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { colors } = useTheme();
@@ -49,13 +54,14 @@ export default function TenantDetail() {
     onSuccess: () => {
       invalidate();
       toast("Checkout selesai — unit kembali kosong");
-      router.back();
+      if (embedded) onGone?.();
+      else router.back();
     },
     onError: (e: any) => toast(e?.message || "Gagal checkout", "error"),
   });
 
   if (isLoading) return <View style={s.root}><Spinner label="Memuat tenant…" /></View>;
-  if (error || !tenant) return <View style={s.root}><ScreenHeader title="Tenant" /><ErrorBox message={(error as any)?.message || "Tidak ditemukan"} onRetry={refetch} /></View>;
+  if (error || !tenant) return <View style={s.root}><ScreenHeader embedded={embedded} title="Tenant" /><ErrorBox message={(error as any)?.message || "Tidak ditemukan"} onRetry={refetch} /></View>;
 
   const active = tenant.status === "aktif";
   const pays: any[] = tenant.payments || [];
@@ -70,19 +76,19 @@ export default function TenantDetail() {
 
   return (
     <View style={s.root}>
-      <ScreenHeader title={tenant.name} right={!active ? <StatusPill label="Checkout" tone="neutral" testID="tenant-checkout-pill" /> : null} />
-      <ScrollView contentContainerStyle={[s.body, { paddingBottom: insets.bottom + spacing.xxxl }]} showsVerticalScrollIndicator={false} testID="tenant-detail-screen">
+      <ScreenHeader embedded={embedded} title={tenant.name} right={!active ? <StatusPill label="Checkout" tone="neutral" testID="tenant-checkout-pill" /> : null} />
+      <ScrollView contentContainerStyle={[s.body, { paddingBottom: (embedded ? 0 : insets.bottom) + spacing.xxxl }]} showsVerticalScrollIndicator={false} testID="tenant-detail-screen">
         {/* Lease */}
-        <Card testID="lease-card" style={soon && active ? { borderColor: withAlpha(colors.warning, 0.5) } : undefined}>
+        <Card testID="lease-card" style={soon && active ? { borderWidth: 1.5, borderColor: withAlpha(colors.warning, 0.5) } : undefined}>
           <RNText style={s.kicker}>Kontrak · Unit {tenant.unit_name}</RNText>
           <RNText style={s.big}>{active ? leaseLeftLabel(tenant.days_left) : "Sudah checkout"}</RNText>
           <RNText style={s.muted}>
             {dateLabel(tenant.start_date + "T00:00:00")} — {tenant.end_date ? dateLabel(tenant.end_date + "T00:00:00") : "tanpa tanggal selesai"}
           </RNText>
           <View style={s.facts}>
-            <Fact label="Sewa / bulan" value={rupiah(tenant.monthly_rent)} />
-            <Fact label="Deposit" value={tenant.deposit ? rupiah(tenant.deposit) : "-"} />
-            <Fact label="Bayar tgl" value={String(tenant.payment_due_day)} />
+            <Fact label="Sewa / bulan" value={rupiahShort(tenant.monthly_rent)} />
+            <Fact label="Dibayar" value={INTERVAL_LABEL[tenant.payment_interval_months || 1] || `${tenant.payment_interval_months} bulan`} />
+            <Fact label="Tanggal bayar" value={String(tenant.payment_due_day)} />
           </View>
           {active ? (
             <Button
@@ -96,15 +102,26 @@ export default function TenantDetail() {
         </Card>
 
         {/* People */}
-        <Card>
-          <Person label="Tenant" name={tenant.name} phone={tenant.phone} wa={wa} testID="tenant-wa" />
+        <ListGroup title="Orang" testID="tenant-people">
+          <ListRow
+            label={tenant.name}
+            sub={`Tenant${tenant.phone ? ` · ${tenant.phone}` : ""}`}
+            icon="key"
+            tone="success"
+            right={wa ? <Button title="WhatsApp" variant="secondary" size="sm" onPress={() => Linking.openURL(wa)} testID="tenant-wa" /> : undefined}
+          />
           {tenant.owner ? (
-            <>
-              <View style={s.divider} />
-              <Person label="Pemilik unit" name={tenant.owner.name || "-"} phone={tenant.owner.phone} wa={ownerWa} testID="owner-wa" />
-            </>
+            <ListRow
+              label={tenant.owner.name || "Pemilik"}
+              sub={`Pemilik unit${tenant.owner.phone ? ` · ${tenant.owner.phone}` : ""}`}
+              icon="user"
+              tone="brand"
+              right={ownerWa ? <Button title="WhatsApp" variant="secondary" size="sm" onPress={() => Linking.openURL(ownerWa)} testID="owner-wa" /> : undefined}
+            />
           ) : null}
-        </Card>
+          <ListRow label="Deposit" value={tenant.deposit ? rupiah(tenant.deposit) : "-"} icon="shield" tone="neutral" />
+          {tenant.commission ? <ListRow label="Komisi kamu" value={rupiah(tenant.commission)} icon="trending-up" tone="brand" /> : null}
+        </ListGroup>
 
         {/* Bills */}
         <View style={{ gap: spacing.md }}>
@@ -116,15 +133,15 @@ export default function TenantDetail() {
             <Card key={p.id} testID={`payment-card-${p.id}`}>
               <View style={s.rowBetween}>
                 <View style={{ flex: 1, gap: 2 }}>
-                  <RNText style={s.period}>{periodLabel(p.period)}</RNText>
-                  <RNText style={s.muted}>{rupiah(p.amount)} · jatuh tempo {dateLabel(p.due_date + "T00:00:00")}</RNText>
+                  <RNText style={s.period}>{periodLabel(p.period, p.months || 1)}</RNText>
+                  <RNText style={s.muted}>{rupiah(p.amount)}{(p.months || 1) > 1 ? ` (${p.months} bulan)` : ""} · jatuh tempo {dateLabel(p.due_date + "T00:00:00")}</RNText>
                 </View>
                 {p.status === "lunas" ? (
                   <PressableScale onLongPress={() => markUnpaid.mutate(p.id)} testID={`payment-status-${p.id}`}>
-                    <StatusPill label="LUNAS ✓" tone="success" />
+                    <StatusPill label="Lunas" tone="success" />
                   </PressableScale>
                 ) : (
-                  <StatusPill label={p.days_late > 0 ? `TELAT ${p.days_late} HR` : "BELUM BAYAR"} tone={p.days_late > 0 ? "error" : "warning"} testID={`payment-status-${p.id}`} />
+                  <StatusPill label={p.days_late > 0 ? `Telat ${p.days_late} hari` : "Belum bayar"} tone={p.days_late > 0 ? "error" : "warning"} testID={`payment-status-${p.id}`} />
                 )}
               </View>
               {p.status !== "lunas" ? (
@@ -134,7 +151,7 @@ export default function TenantDetail() {
                     title="Ingatkan"
                     variant="ghost"
                     size="sm"
-                    onPress={() => setRemind({ id: p.id, name: tenant.name, unit_name: tenant.unit_name, amount: p.amount, due_date: p.due_date, period: p.period, days_late: p.days_late, phone: tenant.phone })}
+                    onPress={() => setRemind({ id: p.id, name: tenant.name, unit_name: tenant.unit_name, amount: p.amount, due_date: p.due_date, period: p.period, months: p.months, days_late: p.days_late, phone: tenant.phone })}
                     testID={`payment-remind-${p.id}`}
                   />
                 </View>
@@ -156,7 +173,7 @@ export default function TenantDetail() {
                 h.unit_type,
                 h.occupants ? `${h.occupants} orang` : null,
                 h.viewings ? `${h.viewings}× viewing` : null,
-              ].filter(Boolean).join(" · ") || "Dari calon penyewa"}
+              ].filter(Boolean).join(" · ") || "Dari prospek"}
             </RNText>
             {h.requirements?.length ? <RNText style={s.muted}>Kebutuhan: {h.requirements.join(", ")}</RNText> : null}
             {h.notes ? <RNText style={s.note}>{h.notes}</RNText> : null}
@@ -172,7 +189,7 @@ export default function TenantDetail() {
 
       <Sheet visible={checkoutOpen} onClose={() => setCheckoutOpen(false)} title={`Checkout ${tenant.name}?`} testID="checkout-sheet">
         <RNText style={s.note}>
-          Unit {tenant.unit_name} kembali KOSONG dan siap dicocokkan dengan calon penyewa baru. Tagihan bulan-bulan setelah hari ini dibatalkan; tagihan yang sudah telat tetap tercatat.
+          Unit {tenant.unit_name} kembali KOSONG dan siap dicocokkan dengan prospek baru. Tagihan bulan-bulan setelah hari ini dibatalkan; tagihan yang sudah telat tetap tercatat.
         </RNText>
         <Button title="Ya, Proses Checkout" variant="danger" onPress={() => checkout.mutate()} loading={checkout.isPending} testID="checkout-confirm-button" style={{ marginTop: spacing.lg }} />
       </Sheet>
@@ -190,33 +207,20 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Person({ label, name, phone, wa, testID }: { label: string; name: string; phone?: string | null; wa: string | null; testID: string }) {
-  const s = useStyles();
-  return (
-    <View style={s.rowBetween}>
-      <View style={{ flex: 1 }}>
-        <RNText style={s.factLabel}>{label}</RNText>
-        <RNText style={s.period}>{name}</RNText>
-        {phone ? <RNText style={s.muted}>{phone}</RNText> : null}
-      </View>
-      {wa ? <Button title="WhatsApp" variant="ghost" size="sm" icon="phone" onPress={() => Linking.openURL(wa)} testID={testID} /> : null}
-    </View>
-  );
-}
+const INTERVAL_LABEL: Record<number, string> = { 1: "Bulanan", 3: "Per 3 bulan", 6: "Per 6 bulan", 12: "Tahunan" };
 
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
-  body: { padding: spacing.lg, gap: spacing.lg, maxWidth: 720, width: "100%", alignSelf: "center" },
-  kicker: { color: colors.muted, fontFamily: fonts.medium, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 },
-  big: { color: colors.onSurface, fontFamily: fonts.bold, fontSize: 22, letterSpacing: -0.3 },
-  muted: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 13, lineHeight: 19 },
-  note: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, marginTop: spacing.sm },
-  facts: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
-  factLabel: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12 },
-  factValue: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 14 },
-  divider: { height: 1, backgroundColor: colors.divider, marginVertical: spacing.md },
+  body: { padding: spacing.lg, gap: spacing.xl, maxWidth: 720, width: "100%", alignSelf: "center" },
+  kicker: { color: colors.brandPrimary, ...fonts.semibold, fontSize: 14, marginBottom: 6 },
+  big: { color: colors.onSurface, ...fonts.bold, fontSize: 28, letterSpacing: -0.5 },
+  muted: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15, lineHeight: 21 },
+  note: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15, lineHeight: 22, marginTop: spacing.sm },
+  facts: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.divider },
+  factLabel: { color: colors.muted, ...fonts.regular, fontSize: 13 },
+  factValue: { color: colors.onSurface, ...fonts.semibold, fontSize: 16 },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
-  period: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 15 },
-  late: { color: colors.error, fontFamily: fonts.semibold, fontSize: 13 },
-  actions: { flexDirection: "row", gap: 8, marginTop: spacing.md },
+  period: { color: colors.onSurface, ...fonts.semibold, fontSize: 17 },
+  late: { color: colors.error, ...fonts.semibold, fontSize: 14 },
+  actions: { flexDirection: "row", gap: 8, marginTop: spacing.md, flexWrap: "wrap" },
 }));

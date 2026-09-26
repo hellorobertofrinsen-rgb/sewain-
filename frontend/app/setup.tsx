@@ -35,14 +35,14 @@ export default function SetupScreen() {
     onSuccess: (r: any) => {
       qc.invalidateQueries({ queryKey: ["properties"] });
       toast("Properti ditambahkan ✓ — lanjut isi unitnya");
-      setUf({ ...uf, property_id: r.id });
+      setUf((cur) => ({ ...cur, property_id: r.id })); // keep whatever was typed meanwhile
       setPOpen(false);
       setPf(emptyProperty);
     },
     onError: (e: any) => toast(e?.message || "Gagal menambah properti", "error"),
   });
   const createUnit = useMutation({
-    mutationFn: () =>
+    mutationFn: (_saved: { name: string; raw: string }) =>
       api("/units", {
         method: "POST",
         body: {
@@ -54,11 +54,12 @@ export default function SetupScreen() {
           owner_phone: uf.owner_phone.trim() || null,
         },
       }),
-    onSuccess: () => {
+    onSuccess: (_r: unknown, saved: { name: string; raw: string }) => {
       for (const key of ["units", "today", "properties", "plan"]) qc.invalidateQueries({ queryKey: [key] });
-      toast(`Unit ${uf.name} tersimpan ✓`);
-      setAdded([...added, uf.name.trim()]);
-      setUf({ ...uf, name: "", monthly_price: "" });
+      toast(`Unit ${saved.name} tersimpan ✓`);
+      setAdded((cur) => [...cur, saved.name]);
+      // Only clear the fields if they still hold the unit that was just saved.
+      setUf((cur) => (cur.name === saved.raw ? { ...cur, name: "", monthly_price: "" } : cur));
     },
     onError: (e: any) => {
       if (!e?.code) toast(e?.message || "Gagal menambah unit", "error");
@@ -123,7 +124,7 @@ export default function SetupScreen() {
             </View>
             <Button
               title={atUnitLimit ? "Batas unit Free tercapai" : canAddUnit ? `Simpan Unit ${uf.name.trim().toUpperCase()}` : "Isi nama unit & harga dulu"}
-              onPress={() => (atUnitLimit ? showUpgrade("limit_units") : createUnit.mutate())}
+              onPress={() => (atUnitLimit ? showUpgrade("limit_units") : createUnit.mutate({ name: uf.name.trim(), raw: uf.name }))}
               loading={createUnit.isPending}
               disabled={!atUnitLimit && !canAddUnit}
               testID="setup-save-unit-button"
@@ -162,11 +163,11 @@ export default function SetupScreen() {
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
   body: { padding: spacing.lg, gap: spacing.lg, maxWidth: 720, width: "100%", alignSelf: "center" },
-  intro: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 14, lineHeight: 21 },
-  step: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 15.5 },
-  sub: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 18, marginTop: 3 },
-  usage: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12 },
-  added: { color: colors.success, fontFamily: fonts.medium, fontSize: 12.5 },
+  intro: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15.5, lineHeight: 21 },
+  step: { color: colors.onSurface, ...fonts.semibold, fontSize: 15.5 },
+  sub: { color: colors.muted, ...fonts.regular, fontSize: 14, lineHeight: 18, marginTop: 3 },
+  usage: { color: colors.muted, ...fonts.regular, fontSize: 13.5 },
+  added: { color: colors.success, ...fonts.medium, fontSize: 14 },
   titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
   row: { flexDirection: "row", gap: spacing.md },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: spacing.sm },

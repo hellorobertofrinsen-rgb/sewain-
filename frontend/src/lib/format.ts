@@ -73,6 +73,18 @@ export function timeLabel(iso: string | null | undefined): string {
   return `${`${d.getHours()}`.padStart(2, "0")}.${`${d.getMinutes()}`.padStart(2, "0")}`;
 }
 
+/** "Hari ini", "Besok", "Kemarin", else "23 Sep". */
+export function shortDay(iso: string | null | undefined): string {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const diff = daysFromNow(iso) ?? 0;
+  if (diff === 0) return "hari ini";
+  if (diff === 1) return "besok";
+  if (diff === -1) return "kemarin";
+  return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`;
+}
+
 export function dateLabel(iso: string | null | undefined): string {
   if (!iso) return "-";
   const d = new Date(iso);
@@ -80,9 +92,15 @@ export function dateLabel(iso: string | null | undefined): string {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-export function periodLabel(period: string): string {
+/** "Mei 2026", or for a bill covering several months "Mei 2026 – Okt 2026". */
+export function periodLabel(period: string, months = 1): string {
   const [y, m] = period.split("-");
   const idx = parseInt(m, 10) - 1;
+  if (months > 1 && idx >= 0) {
+    const endIdx = (idx + months - 1) % 12;
+    const endYear = parseInt(y, 10) + Math.floor((idx + months - 1) / 12);
+    return `${(MONTHS[idx] ?? m).slice(0, 3)} ${y} – ${(MONTHS[endIdx] ?? "").slice(0, 3)} ${endYear}`;
+  }
   return `${MONTHS[idx] ?? m} ${y}`;
 }
 

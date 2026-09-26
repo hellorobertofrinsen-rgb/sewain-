@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "sewain",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "id.sewain.app",
@@ -18,7 +18,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#121214"
+        "backgroundColor": "#F4F5F7"
       },
       "package": "id.sewain.app"
     },
@@ -29,8 +29,8 @@
       "name": "Sewain",
       "shortName": "Sewain",
       "lang": "id",
-      "themeColor": "#121214",
-      "backgroundColor": "#121214",
+      "themeColor": "#F4F5F7",
+      "backgroundColor": "#F4F5F7",
       "description": "AI admin buat bisnis sewa properti."
     },
     "plugins": [
@@ -41,7 +41,7 @@
           "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#121214"
+          "backgroundColor": "#F4F5F7"
         }
       ],
       "expo-font",

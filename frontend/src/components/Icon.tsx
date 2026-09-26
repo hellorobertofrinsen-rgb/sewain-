@@ -8,7 +8,8 @@ type IconName =
   | "sliders" | "plus" | "x" | "check" | "chevron-left" | "chevron-right"
   | "copy" | "alert" | "clock" | "calendar-check" | "upload" | "file"
   | "send" | "refresh" | "wallet" | "search" | "logout" | "arrow-right"
-  | "pencil" | "phone" | "trash" | "eye" | "user";
+  | "pencil" | "phone" | "trash" | "eye" | "user" | "key" | "zap" | "trending-up"
+  | "lock" | "globe" | "shield" | "clipboard" | "building" | "message";
 
 const GEOM: Record<string, { d?: string[]; c?: [number, number, number][]; r?: [number, number, number, number, number][] }> = {
   home: { d: ["M3 10.5L12 3l9 7.5", "M5 9.7V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.7", "M9.5 21v-5.5h5V21"] },
@@ -41,6 +42,15 @@ const GEOM: Record<string, { d?: string[]; c?: [number, number, number][]; r?: [
   trash: { d: ["M3.5 6.5h17", "M8 6.5V4a1.5 1.5 0 0 1 1.5-1.5h5A1.5 1.5 0 0 1 16 4v2.5", "M5.5 6.5l1 14h11l1-14", "M10 10.5v6", "M14 10.5v6"] },
   eye: { d: ["M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"], c: [[12, 12, 2.75]] },
   user: { c: [[12, 8, 4]], d: ["M4.5 21c0-3.7 3.4-6 7.5-6s7.5 2.3 7.5 6"] },
+  key: { c: [[7.5, 15.5, 4]], d: ["M10.5 12.5L20 3", "M16.5 6.5l3 3", "M14 9l2 2"] },
+  zap: { d: ["M13 2.5L4 14h7l-1 7.5L19 10h-7l1-7.5z"] },
+  "trending-up": { d: ["M2.5 17.5l6.5-6.5 4 4 8.5-8.5", "M15.5 6.5h6v6"] },
+  lock: { r: [[4, 11, 16, 10, 2]], d: ["M8 11V7.5a4 4 0 0 1 8 0V11"] },
+  globe: { c: [[12, 12, 9]], d: ["M3 12h18", "M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"] },
+  shield: { d: ["M12 21.5s8-3.6 8-10V5l-8-2.5L4 5v6.5c0 6.4 8 10 8 10z"] },
+  clipboard: { r: [[5, 4, 14, 17.5, 2]], d: ["M9 2.5h6v3H9z", "M9 11h6", "M9 15h4"] },
+  building: { r: [[4, 3, 11, 18, 1.5]], d: ["M15 9h4.5a.5.5 0 0 1 .5.5V21", "M2.5 21h19", "M8 7h3", "M8 11h3", "M8 15h3"] },
+  message: { d: ["M20.5 14.5a2 2 0 0 1-2 2H8l-4.5 4V5.5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z", "M8 9h8", "M8 12.5h5"] },
 };
 
 export function Icon({

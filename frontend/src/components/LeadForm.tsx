@@ -75,7 +75,7 @@ export function LeadForm({ value, onChange, startExpanded = false }: { value: Le
         </View>
       </Field>
 
-      {more ? (
+      {more || value.preferred_location || value.move_in_date || value.notes || value.requirements ? (
         <>
           <Field label="Lokasi yang diinginkan">
             <Input testID="lead-location-input" value={value.preferred_location} onChangeText={set("preferred_location")} placeholder="mis. Canggu, PIK 2" />
@@ -104,5 +104,5 @@ export function LeadForm({ value, onChange, startExpanded = false }: { value: Le
 
 const useStyles = makeStyles((colors) => ({
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  more: { color: colors.onSurfaceSecondary, fontFamily: fonts.medium, fontSize: 13 },
+  more: { color: colors.brandPrimary, ...fonts.semibold, fontSize: 15 },
 }));
