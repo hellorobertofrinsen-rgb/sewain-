@@ -44,8 +44,8 @@ export default function TenantsScreen() {
   const ready = !!f.unit_id && !!f.name.trim() && phoneOk(f.phone) && !!f.start_date && dueDayOk(f.due_day)
     && !!parseMoney(f.monthly_rent) && f.deposit !== "";
 
-  const belum = (data || []).filter((t) => t.payment_status === "belum_bayar");
-  const belumTotal = belum.reduce((a, t) => a + (t.next_amount || 0), 0);
+  const belum = (data || []).filter((x) => x.payment_status === "belum_bayar");
+  const belumTotal = belum.reduce((a, x) => a + (x.next_amount || 0), 0);
 
   const create = useMutation({
     mutationFn: () =>
@@ -68,40 +68,40 @@ export default function TenantsScreen() {
       qc.invalidateQueries({ queryKey: ["tenants"] });
       qc.invalidateQueries({ queryKey: ["units"] });
       qc.invalidateQueries({ queryKey: ["today"] });
-      toast("Tenant ditambahkan — unit jadi terisi ✓");
+      toast(t("Tenant ditambahkan — unit jadi terisi ✓"));
       setAddOpen(false);
       setF({ ...f, name: "", unit_id: "", phone: "", monthly_rent: "", deposit: "", commission: "" });
     },
-    onError: (e: any) => toast(e?.message || "Gagal menambah tenant", "error"),
+    onError: (e: any) => toast(e?.message || t("Gagal menambah tenant"), "error"),
   });
 
   const open = (id: string) => (wide ? setSelected(id) : router.push(`/tenant/${id}` as any));
-  const ending = (data || []).filter((t) => t.days_left != null && t.days_left <= 30).length;
+  const ending = (data || []).filter((x) => x.days_left != null && x.days_left <= 30).length;
 
   const list = (
     <View style={s.root}>
       <TabHeader
-        title="Tenant"
-        sub={data && data.length ? [`${data.length} aktif`, ending ? `${ending} kontrak habis ≤ 30 hari` : null].filter(Boolean).join(" · ") : null}
-        right={<Button title="Tambah" icon="plus" size="sm" onPress={() => setAddOpen(true)} testID="add-tenant-button" />}
+        title={t("Tenant||tab")}
+        sub={data && data.length ? [t("{n} aktif", { n: data.length }), ending ? t("{n} kontrak selesai ≤ 30 hari", { n: ending }) : null].filter(Boolean).join(" · ") : null}
+        right={<Button title={t("Tambah")} icon="plus" size="sm" onPress={() => setAddOpen(true)} testID="add-tenant-button" />}
       />
 
       {isLoading ? (
-        <Spinner label="Memuat tenant…" />
+        <Spinner label={t("Memuat tenant…")} />
       ) : error ? (
         <View style={{ padding: spacing.lg }}><ErrorBox message={(error as any)?.message} onRetry={refetch} /></View>
       ) : (
         <FlatList
           data={data || []}
-          keyExtractor={(t) => t.id}
+          keyExtractor={(x) => x.id}
           contentContainerStyle={s.listContent}
           ListHeaderComponent={
             belum.length > 0 ? (
               <Card testID="unpaid-summary-card" style={s.unpaidCard}>
                 <IconCircle icon="wallet" tone="error" size={44} />
                 <View style={{ flex: 1, gap: 2 }}>
-                  <RNText style={s.unpaidTitle}>{rupiah(belumTotal)} belum masuk</RNText>
-                  <RNText style={s.unpaidSub} numberOfLines={2}>{belum.length} tenant · {belum.map((t) => t.name).join(", ")}</RNText>
+                  <RNText style={s.unpaidTitle}>{t("{amount} belum masuk", { amount: rupiah(belumTotal) })}</RNText>
+                  <RNText style={s.unpaidSub} numberOfLines={2}>{`${t("{n} tenant", { n: belum.length })} · ${belum.map((x) => x.name).join(", ")}`}</RNText>
                 </View>
               </Card>
             ) : null
@@ -124,9 +124,9 @@ export default function TenantsScreen() {
           ListEmptyComponent={
             <EmptyState
               art="tenants"
-              title="Belum ada tenant aktif"
-              subtitle="Tenant muncul otomatis saat prospek ditandai deal, atau tambah manual di sini."
-              action={<Button title="Tambah Tenant" icon="plus" onPress={() => setAddOpen(true)} testID="empty-add-tenant-button" />}
+              title={t("Belum ada tenant aktif")}
+              subtitle={t("Tenant muncul otomatis saat prospek ditandai deal, atau tambah manual di sini.")}
+              action={<Button title={t("Tambah Tenant")} icon="plus" onPress={() => setAddOpen(true)} testID="empty-add-tenant-button" />}
             />
           }
         />
@@ -140,7 +140,7 @@ export default function TenantsScreen() {
         list={list}
         detail={selected ? <TenantDetail key={selected} id={selected} embedded onGone={() => setSelected(null)} /> : null}
         emptyArt="tenants"
-        emptyText="Pilih tenant untuk lihat kontrak, tagihan, dan riwayatnya."
+        emptyText={t("Pilih tenant untuk lihat kontrak, tagihan, dan riwayatnya.")}
       />
       <Sheet visible={addOpen} onClose={() => setAddOpen(false)} title={t("Tambah Tenant")} testID="add-tenant-sheet" scroll>
         <View style={{ gap: spacing.md }}>
@@ -169,46 +169,46 @@ export default function TenantsScreen() {
                 )}
               </Field>
               <Field label={t("Nama tenant")}>
-                <Input testID="tenant-name-input" value={f.name} onChangeText={(v) => setF({ ...f, name: v })} placeholder="mis. Kevin" />
+                <Input testID="tenant-name-input" value={f.name} onChangeText={(v) => setF({ ...f, name: v })} placeholder={t("mis. Kevin")} />
               </Field>
               <Field label={t("No. WhatsApp")}>
                 <Input testID="tenant-phone-input" value={f.phone} onChangeText={(v) => setF({ ...f, phone: v })} placeholder="+62 812-…" keyboardType="phone-pad" />
               </Field>
               <View style={{ flexDirection: "row", gap: spacing.md }}>
                 <View style={{ flex: 1 }}>
-                  <Field label="Mulai sewa">
+                  <Field label={t("Mulai sewa")}>
                     <DateInput testID="tenant-start-input" value={f.start_date} onChange={(v) => setF({ ...f, start_date: v })} />
                   </Field>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Field label="Bayar tiap tanggal">
+                  <Field label={t("Bayar tiap tanggal")}>
                     <Input testID="tenant-due-input" value={f.due_day} onChangeText={(v) => setF({ ...f, due_day: v.replace(/\D/g, "").slice(0, 2) })} keyboardType="numeric" />
                   </Field>
                 </View>
               </View>
               <View style={{ flexDirection: "row", gap: spacing.md }}>
                 <View style={{ flex: 1 }}>
-                  <Field label="Sewa / bulan">
+                  <Field label={t("Sewa / bulan")}>
                     <Input testID="tenant-rent-input" value={f.monthly_rent} onChangeText={(v) => setF({ ...f, monthly_rent: typeMoney(v) })} placeholder="3.200.000" keyboardType="numeric" />
                   </Field>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Field label="Deposit">
+                  <Field label={t("Deposit")}>
                     <Input testID="tenant-deposit-input" value={f.deposit} onChangeText={(v) => setF({ ...f, deposit: typeMoney(v) })} placeholder="1.200.000" keyboardType="numeric" />
                   </Field>
                 </View>
               </View>
-              <Field label="Lama kontrak">
+              <Field label={t("Lama kontrak")}>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                   {[1, 3, 6, 12, 24].map((m) => (
-                    <Chip key={m} label={`${m} bulan`} active={f.months === m} onPress={() => setF({ ...f, months: m })} testID={`tenant-months-${m}`} />
+                    <Chip key={m} label={t("{n} bulan", { n: m })} active={f.months === m} onPress={() => setF({ ...f, months: m })} testID={`tenant-months-${m}`} />
                   ))}
                 </View>
               </Field>
-              <Field label="Dibayar tiap">
+              <Field label={t("Dibayar tiap")}>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                   {[{ m: 1, l: "Bulanan" }, { m: 3, l: "3 bulan" }, { m: 6, l: "6 bulan" }, { m: 12, l: "Tahunan" }].map((it) => (
-                    <Chip key={it.m} label={it.l} active={f.interval === it.m} onPress={() => setF({ ...f, interval: it.m })} testID={`tenant-interval-${it.m}`} />
+                    <Chip key={it.m} label={t(it.l)} active={f.interval === it.m} onPress={() => setF({ ...f, interval: it.m })} testID={`tenant-interval-${it.m}`} />
                   ))}
                 </View>
               </Field>

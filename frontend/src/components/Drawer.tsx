@@ -15,6 +15,7 @@ import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { cardShadow, makeStyles } from "@/src/theme";
 import { DURATION, EASE_OUT, EASE_SHEET, SPRING_SETTLE } from "@/src/motion";
+import { t } from "@/src/lib/i18n";
 
 // Side menu from the left edge. Same motion rules as the bottom Sheet: opens on the
 // iOS sheet curve, closes faster, follows the finger when dragged left and carries
@@ -116,7 +117,7 @@ export function Drawer({ open, onClose, children, testID }: { open: boolean; onC
     <Modal visible transparent animationType="none" onRequestClose={requestClose} statusBarTranslucent>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <Animated.View style={[s.backdrop, backdropStyle]} />
-        <Pressable style={{ flex: 1 }} onPress={requestClose} accessibilityLabel="Tutup menu" />
+        <Pressable style={{ flex: 1 }} onPress={requestClose} accessibilityLabel={t("Tutup menu")} />
         <GestureDetector gesture={pan}>
           <Animated.View testID={testID} {...({ dataSet: { noPtr: "1" } } as any)} style={[s.panel, { width, paddingTop: insets.top, paddingBottom: insets.bottom }, panelStyle]}>
             <View style={{ flex: 1 }}>{children}</View>

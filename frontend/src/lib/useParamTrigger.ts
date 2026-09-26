@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useNavigationContainerRef } from "expo-router";
 import { useEffect, useState } from "react";
 
 /**
@@ -14,7 +14,18 @@ export function useParamTrigger(key: string, onTrigger: () => void) {
     setSeen(value);
     if (value) onTrigger();
   }
+  // On a fresh page load (/units?add=1 typed or refreshed) the navigator isn't ready
+  // during the first effects, and navigating then crashes; wait until it is.
+  const nav = useNavigationContainerRef();
   useEffect(() => {
-    if (value) router.setParams({ [key]: undefined } as any);
-  }, [key, value]);
+    if (!value) return;
+    let tries = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const clear = () => {
+      if (nav.isReady()) router.setParams({ [key]: undefined } as any);
+      else if (tries++ < 60) timer = setTimeout(clear, 50);
+    };
+    clear();
+    return () => clearTimeout(timer);
+  }, [key, value, nav]);
 }

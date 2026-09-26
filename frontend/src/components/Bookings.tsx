@@ -45,7 +45,7 @@ export function Bookings({ unit }: { unit: any }) {
         {t("Sewa harian")}
       </SectionTitle>
       <RNText style={s.sub}>
-        {unit.daily_price ? t("{price} per malam", { price: rupiah(unit.daily_price) }) : t("Harga per malam belum diisi (Edit unit).")}
+        {unit.daily_price ? t("{price} per hari", { price: rupiah(unit.daily_price) }) : t("Harga per hari belum diisi (Edit unit).")}
         {past.length ? ` · ${t("{n} booking selesai, total {total}", { n: past.length, total: rupiah(pastTotal) })}` : ""}
       </RNText>
       {upcoming.length === 0 ? <RNText style={s.empty}>{t("Belum ada booking yang akan datang.")}</RNText> : null}
@@ -60,7 +60,7 @@ export function Bookings({ unit }: { unit: any }) {
             <RNText style={s.total}>{rupiah(b.total)}</RNText>
           </View>
           {waLink(b.phone) ? (
-            <PressableScale onPress={() => Linking.openURL(waLink(b.phone)!)} style={s.iconBtn} accessibilityLabel="WhatsApp" testID={`booking-wa-${b.id}`}>
+            <PressableScale onPress={() => Linking.openURL(waLink(b.phone)!)} style={s.iconBtn} accessibilityLabel={t("WhatsApp")} testID={`booking-wa-${b.id}`}>
               <Icon name="whatsapp" size={19} color={colors.success} />
             </PressableScale>
           ) : null}
@@ -106,13 +106,13 @@ function BookingSheet({ unit, onClose }: { unit: any; onClose: () => void }) {
         </Field>
         <View style={{ flexDirection: "row", gap: spacing.md }}>
           <View style={{ flex: 1 }}>
-            <Field label="Check-in"><DateInput testID="booking-in" value={f.check_in} onChange={(v) => setF({ ...f, check_in: v })} /></Field>
+            <Field label={t("Check-in")}><DateInput testID="booking-in" value={f.check_in} onChange={(v) => setF({ ...f, check_in: v })} /></Field>
           </View>
           <View style={{ flex: 1 }}>
-            <Field label="Check-out"><DateInput testID="booking-out" value={f.check_out} onChange={(v) => setF({ ...f, check_out: v })} /></Field>
+            <Field label={t("Check-out")}><DateInput testID="booking-out" value={f.check_out} onChange={(v) => setF({ ...f, check_out: v })} /></Field>
           </View>
         </View>
-        <Field label={t("Harga per malam")}>
+        <Field label={t("Harga per hari")}>
           <Input testID="booking-price" value={f.price} onChangeText={(v) => setF({ ...f, price: typeMoney(v) })} keyboardType="numeric" placeholder="750.000" />
         </Field>
         <View style={s.summary}>

@@ -30,19 +30,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const toast = useCallback((msg: string, type: ToastType = "ok") => {
     const id = ++idRef.current;
     // The pill already shows a check icon; drop a trailing "✓" from older messages.
-    setToasts((t) => [...t.slice(-2), { id, msg: msg.replace(/\s*✓\s*$/, ""), type }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2800);
+    setToasts((cur) => [...cur.slice(-2), { id, msg: msg.replace(/\s*✓\s*$/, ""), type }]);
+    setTimeout(() => setToasts((cur) => cur.filter((x) => x.id !== id)), 2800);
   }, []);
 
   return (
     <Ctx.Provider value={{ toast }}>
       {children}
       <View pointerEvents="none" style={[s.wrap, { top: insets.top + spacing.sm, pointerEvents: "none" }]}>
-        {toasts.map((t) => (
-          <Animated.View key={t.id} entering={reduced ? TOAST_ENTER_REDUCED : TOAST_ENTER} exiting={reduced ? TOAST_EXIT_REDUCED : TOAST_EXIT} layout={TOAST_REFLOW} style={[s.toast, s[t.type]]}>
-            <Icon name={t.type === "error" ? "alert" : "check"} size={17} color={t.type === "error" ? "#FF8A80" : t.type === "info" ? "#9CC3FF" : "#7BD3A0"} />
-            <RNText style={[s.text, s[`${t.type}Text`]]} numberOfLines={3}>
-              {t.msg}
+        {toasts.map((item) => (
+          <Animated.View key={item.id} entering={reduced ? TOAST_ENTER_REDUCED : TOAST_ENTER} exiting={reduced ? TOAST_EXIT_REDUCED : TOAST_EXIT} layout={TOAST_REFLOW} style={[s.toast, s[item.type]]}>
+            <Icon name={item.type === "error" ? "alert" : "check"} size={17} color={item.type === "error" ? "#FF8A80" : item.type === "info" ? "#9CC3FF" : "#7BD3A0"} />
+            <RNText style={[s.text, s[`${item.type}Text`]]} numberOfLines={3}>
+              {item.msg}
             </RNText>
           </Animated.View>
         ))}

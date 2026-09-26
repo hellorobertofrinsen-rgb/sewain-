@@ -2,6 +2,7 @@ import React from "react";
 import { ScrollView, Text as RNText, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenHeader } from "./ScreenHeader";
+import { t } from "@/src/lib/i18n";
 import { fonts, makeStyles, spacing } from "@/src/theme";
 
 export type DocSection = { h: string; p: (string | string[])[] };
@@ -14,7 +15,7 @@ export function DocPage({ title, updated, intro, sections, testID }: { title: st
     <View style={s.root}>
       <ScreenHeader title={title} />
       <ScrollView contentContainerStyle={[s.body, { paddingBottom: insets.bottom + spacing.xxxl }]} testID={testID}>
-        <RNText style={s.updated}>Terakhir diperbarui {updated}</RNText>
+        <RNText style={s.updated}>{t("Terakhir diperbarui {date}", { date: updated })}</RNText>
         <RNText style={s.p}>{intro}</RNText>
         {sections.map((sec) => (
           <View key={sec.h} style={{ gap: spacing.sm }}>

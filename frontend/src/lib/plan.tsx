@@ -7,6 +7,7 @@ import { Button, StatusPill, PressableScale } from "@/src/components/ui";
 import { Icon } from "@/src/components/Icon";
 import { api, onPlanError } from "./api";
 import { useAuth } from "./auth";
+import { t } from "./i18n";
 import { rupiah } from "./format";
 import { upgradeMessage } from "./messages";
 import { STATE_TRANSITION } from "@/src/motion";
@@ -94,20 +95,20 @@ function headline(reason: UpgradeReason, plan?: PlanInfo): { title: string; sub:
   const maxLeads = plan?.limits.max_active_leads ?? 20;
   switch (reason) {
     case "limit_units":
-      return { title: `Kamu sudah punya ${maxUnits} unit`, sub: `Itu batas paket Free. Upgrade ke Premium untuk kelola semua unitmu tanpa batas.` };
+      return { title: t("Kamu sudah punya {n} unit", { n: maxUnits }), sub: t("Itu batas paket Free. Upgrade ke Premium untuk kelola semua unitmu tanpa batas.") };
     case "limit_leads":
-      return { title: `${maxLeads} prospek aktif sudah penuh`, sub: "Upgrade ke Premium supaya setiap prospek baru tetap tercatat." };
+      return { title: t("{n} prospek aktif sudah penuh", { n: maxLeads }), sub: t("Upgrade ke Premium supaya setiap prospek baru tetap tercatat.") };
     case "feature_bulk_import":
-      return { title: "Impor CSV ada di Premium", sub: "Pindahkan semua unit dari Excel sekaligus." };
+      return { title: t("Impor CSV ada di Premium"), sub: t("Pindahkan semua unit dari Excel sekaligus.") };
     case "feature_export":
-      return { title: "Export data ada di Premium", sub: "Unduh semua datamu kapan saja dalam format CSV." };
+      return { title: t("Export data ada di Premium"), sub: t("Unduh semua datamu kapan saja dalam format CSV.") };
     case "hidden_units":
       return {
-        title: `${plan?.hidden_units ?? 0} unit sedang disembunyikan`,
-        sub: `Paket Free menampilkan ${maxUnits} unit pertama. Upgrade untuk menampilkan semua unitmu lagi — datanya tetap aman.`,
+        title: t("{n} unit sedang disembunyikan", { n: plan?.hidden_units ?? 0 }),
+        sub: t("Paket Free menampilkan {n} unit pertama. Upgrade untuk menampilkan semua unitmu lagi — datanya tetap aman.", { n: maxUnits }),
       };
     default:
-      return { title: "SewAIn Premium", sub: "Buat agen yang portofolionya lagi tumbuh. Semua fitur Free, tanpa batas." };
+      return { title: "SewAIn Premium", sub: t("Buat agen yang portofolionya lagi tumbuh. Semua fitur Free, tanpa batas.") };
   }
 }
 
@@ -130,7 +131,7 @@ function UpgradeSheet({ reason, plan, email, onClose }: { reason: UpgradeReason 
     <Sheet visible={!!reason} onClose={onClose} testID="upgrade-sheet" scroll>
       <View style={{ gap: spacing.lg }}>
         <View style={{ gap: 6 }}>
-          <StatusPill label="Premium" tone="brand" testID="upgrade-pill" />
+          <StatusPill label={t("Premium")} tone="brand" testID="upgrade-pill" />
           <RNText style={s.title}>{h.title}</RNText>
           <RNText style={s.sub}>{h.sub}</RNText>
         </View>
@@ -142,8 +143,8 @@ function UpgradeSheet({ reason, plan, email, onClose }: { reason: UpgradeReason 
                 <Icon name="check" size={13} color={colors.success} />
               </View>
               <View style={{ flex: 1 }}>
-                <RNText style={s.benefitTitle}>{b.title}</RNText>
-                <RNText style={s.benefitSub}>{b.sub}</RNText>
+                <RNText style={s.benefitTitle}>{t(b.title)}</RNText>
+                <RNText style={s.benefitSub}>{t(b.sub)}</RNText>
               </View>
             </View>
           ))}
@@ -156,20 +157,20 @@ function UpgradeSheet({ reason, plan, email, onClose }: { reason: UpgradeReason 
             const saving = monthly && p.months > 1 ? Math.round((1 - p.price / (monthly * p.months)) * 100) : 0;
             return (
               <PressableScale key={p.id} testID={`price-${p.id}`} onPress={() => setPicked(p.id)} style={[STATE_TRANSITION, s.price, active && s.priceActive]}>
-                {p.best ? <RNText style={s.best}>PALING HEMAT</RNText> : null}
-                <RNText style={s.priceLabel}>{p.label}</RNText>
+                {p.best ? <RNText style={s.best}>{t("PALING HEMAT")}</RNText> : null}
+                <RNText style={s.priceLabel}>{t(p.label)}</RNText>
                 <RNText style={s.priceValue}>{rupiah(p.price)}</RNText>
                 <RNText style={s.priceSub}>
-                  {p.months > 1 ? `≈ ${rupiah(perMonth)}/bulan${saving > 0 ? ` · hemat ${saving}%` : ""}` : "per bulan"}
+                  {p.months > 1 ? `≈ ${rupiah(perMonth)}${t("/bulan")}${saving > 0 ? ` · ${t("hemat {n}%", { n: saving })}` : ""}` : t("per bulan")}
                 </RNText>
               </PressableScale>
             );
           })}
         </View>
 
-        <Button title="Upgrade lewat WhatsApp" icon="whatsapp" size="lg" onPress={contact} testID="upgrade-whatsapp-button" />
+        <Button title={t("Upgrade lewat WhatsApp")} icon="whatsapp" size="lg" onPress={contact} testID="upgrade-whatsapp-button" />
         <RNText style={s.note}>
-          Bayar lewat transfer, lalu kirim buktinya di WhatsApp. Setelah dikonfirmasi, akunmu kami aktifkan manual — biasanya kurang dari 1×24 jam. Tanpa langganan otomatis.
+          {t("Bayar lewat transfer, lalu kirim buktinya di WhatsApp. Setelah dikonfirmasi, akunmu kami aktifkan manual — biasanya kurang dari 1×24 jam. Tanpa langganan otomatis.")}
         </RNText>
       </View>
     </Sheet>

@@ -61,12 +61,12 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
     for (const key of ["lead", "leads", "today", "units", "tenants", "plan"]) qc.invalidateQueries({ queryKey: [key] });
   };
   const onErr = (e: any) => {
-    if (!e?.code) toast(e?.message || "Gagal. Coba lagi.", "error");
+    if (!e?.code) toast(e?.message || t("Gagal. Coba lagi."), "error");
   };
 
   const pickUnit = useMutation({
     mutationFn: (unitId: string | null) => api(`/leads/${id}`, { method: "PATCH", body: { matched_unit_id: unitId } }),
-    onSuccess: () => { invalidate(); toast("Unit dipilih ✓"); },
+    onSuccess: () => { invalidate(); toast(t("Unit dipilih ✓")); },
     onError: onErr,
   });
   const setHot = useMutation({
@@ -77,17 +77,17 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
   const [lostReason, setLostReason] = useState<string | null>(null);
   const markLost = useMutation({
     mutationFn: () => api(`/leads/${id}/not-interested`, { method: "POST", body: { reason: lostReason } }),
-    onSuccess: () => { invalidate(); setSheet(null); toast("Ditandai tidak jadi"); },
+    onSuccess: () => { invalidate(); setSheet(null); toast(t("Ditandai tidak jadi")); },
     onError: onErr,
   });
   const reopen = useMutation({
     mutationFn: () => api(`/leads/${id}/reopen`, { method: "POST" }),
-    onSuccess: () => { invalidate(); toast("Prospek aktif lagi"); },
+    onSuccess: () => { invalidate(); toast(t("Prospek aktif lagi")); },
     onError: onErr,
   });
 
-  if (isLoading) return <View style={s.root}><Spinner label="Memuat prospek…" /></View>;
-  if (error || !lead) return <View style={s.root}><ScreenHeader embedded={embedded} title="Prospek" /><ErrorBox message={(error as any)?.message || "Tidak ditemukan"} onRetry={refetch} /></View>;
+  if (isLoading) return <View style={s.root}><Spinner label={t("Memuat prospek…")} /></View>;
+  if (error || !lead) return <View style={s.root}><ScreenHeader embedded={embedded} title={t("Prospek")} /><ErrorBox message={(error as any)?.message || t("Tidak ditemukan")} onRetry={refetch} /></View>;
 
   const status: string = lead.status;
   const closed = status === "deal" || status === "tidak_jadi";
@@ -103,7 +103,7 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
       <ScreenHeader embedded={embedded}
         title={lead.name}
         right={
-          <PressableScale testID="lead-edit-button" onPress={() => setSheet("edit")} style={s.headerBtn} accessibilityLabel="Edit">
+          <PressableScale testID="lead-edit-button" onPress={() => setSheet("edit")} style={s.headerBtn} accessibilityLabel={t("Edit")}>
             <Icon name="pencil" size={18} color={colors.onSurfaceSecondary} />
           </PressableScale>
         }
@@ -119,13 +119,13 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
         </View>
         {/* Stage */}
         {status === "tidak_jadi" ? (
-          <StatusPill label="Tidak jadi" tone="neutral" testID="lead-status-pill" />
+          <StatusPill label={t("Tidak jadi")} tone="neutral" testID="lead-status-pill" />
         ) : (
           <View style={s.stages} testID="lead-stages">
             {STAGES.map((st, i) => (
               <View key={st.key} style={{ flex: 1, gap: 6 }}>
                 <Animated.View style={[STATE_TRANSITION, s.stageBar, i <= stage && { backgroundColor: status === "deal" ? colors.success : colors.brandPrimary }]} />
-                <RNText style={[s.stageLabel, i === stage && s.stageLabelActive]}>{st.label}</RNText>
+                <RNText style={[s.stageLabel, i === stage && s.stageLabelActive]}>{t(st.label)}</RNText>
               </View>
             ))}
           </View>
@@ -135,61 +135,61 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
         <Card testID="next-step-card">
           {status === "deal" ? (
             <>
-              <RNText style={s.kicker}>Sudah jadi tenant</RNText>
-              <RNText style={s.stepText}>{lead.name} sudah menyewa {lead.matched_unit ? `unit ${lead.matched_unit.name}` : "unit"}. Tagihan & kontraknya ada di halaman tenant.</RNText>
-              {lead.tenant_id ? <Button title="Lihat Tenant" onPress={() => router.push(`/tenant/${lead.tenant_id}` as any)} testID="lead-open-tenant" style={s.stepBtn} /> : null}
+              <RNText style={s.kicker}>{t("Sudah jadi tenant")}</RNText>
+              <RNText style={s.stepText}>{lead.matched_unit ? t("{name} sudah menyewa unit {unit}. Tagihan & kontraknya ada di halaman tenant.", { name: lead.name, unit: lead.matched_unit.name }) : t("{name} sudah menyewa unit. Tagihan & kontraknya ada di halaman tenant.", { name: lead.name })}</RNText>
+              {lead.tenant_id ? <Button title={t("Lihat Tenant")} onPress={() => router.push(`/tenant/${lead.tenant_id}` as any)} testID="lead-open-tenant" style={s.stepBtn} /> : null}
             </>
           ) : status === "tidak_jadi" ? (
             <>
-              <RNText style={s.stepText}>Prospek ini ditandai tidak jadi.</RNText>
-              <Button title="Aktifkan Lagi" variant="ghost" onPress={() => reopen.mutate()} loading={reopen.isPending} testID="lead-reopen" style={s.stepBtn} />
+              <RNText style={s.stepText}>{t("Prospek ini ditandai tidak jadi.")}</RNText>
+              <Button title={t("Aktifkan Lagi")} variant="ghost" onPress={() => reopen.mutate()} loading={reopen.isPending} testID="lead-reopen" style={s.stepBtn} />
             </>
           ) : status === "negotiation" ? (
             <>
-              <RNText style={s.kicker}>Negosiasi</RNText>
+              <RNText style={s.kicker}>{t("Negosiasi")}</RNText>
               <RNText style={s.stepText}>
-                {[nego?.agreed_price ? `${rupiah(nego.agreed_price)}/bulan` : null, nego?.contract_months ? `${nego.contract_months} bulan` : null, nego?.deposit ? `deposit ${rupiah(nego.deposit)}` : null]
+                {[nego?.agreed_price ? `${rupiah(nego.agreed_price)}${t("/bulan")}` : null, nego?.contract_months ? t("{n} bulan", { n: nego.contract_months }) : null, nego?.deposit ? t("deposit {amount}", { amount: rupiah(nego.deposit) }) : null]
                   .filter(Boolean)
-                  .join(" · ") || "Belum ada angka yang disepakati."}
+                  .join(" · ") || t("Belum ada angka yang disepakati.")}
               </RNText>
               {nego?.note ? <RNText style={s.muted}>{nego.note}</RNText> : null}
-              <Button title="Deal — Jadikan Tenant" onPress={() => setSheet("deal")} testID="lead-mark-deal-button" style={s.stepBtn} />
+              <Button title={t("Deal — Jadikan Tenant")} onPress={() => setSheet("deal")} testID="lead-mark-deal-button" style={s.stepBtn} />
               <View style={s.row}>
-                <Button title="Ubah Nego" variant="ghost" size="sm" onPress={() => setSheet("negotiation")} testID="lead-edit-nego" />
-                <Button title="Follow-up" variant="ghost" size="sm" onPress={() => setSheet("followup")} testID="lead-followup-button" />
+                <Button title={t("Ubah Nego")} variant="ghost" size="sm" onPress={() => setSheet("negotiation")} testID="lead-edit-nego" />
+                <Button title={t("Follow-up")} variant="ghost" size="sm" onPress={() => setSheet("followup")} testID="lead-followup-button" />
               </View>
             </>
           ) : status === "viewing" ? (
             <>
-              <RNText style={s.kicker}>Viewing</RNText>
+              <RNText style={s.kicker}>{t("Viewing")}</RNText>
               <RNText style={s.stepText}>
-                {upcoming ? `Unit ${upcoming.unit_name} · ${dateTimeLabel(upcoming.scheduled_at)}` : "Sudah viewing. Lanjut negosiasi kalau cocok."}
+                {upcoming ? `${t("Unit {name}", { name: upcoming.unit_name })} · ${dateTimeLabel(upcoming.scheduled_at)}` : t("Sudah viewing. Lanjut negosiasi kalau cocok.")}
               </RNText>
               {upcoming?.location ? <RNText style={s.muted}>{upcoming.location}</RNText> : null}
               {upcoming ? <InviteButtons lead={lead} viewing={upcoming} /> : null}
-              <Button title="Lanjut Negosiasi" variant={upcoming ? "ghost" : "primary"} onPress={() => setSheet("negotiation")} testID="lead-start-nego" style={s.stepBtn} />
+              <Button title={t("Lanjut Negosiasi")} variant={upcoming ? "ghost" : "primary"} onPress={() => setSheet("negotiation")} testID="lead-start-nego" style={s.stepBtn} />
               <View style={s.row}>
-                <Button title="Follow-up" variant="ghost" size="sm" onPress={() => setSheet("followup")} testID="lead-followup-button" />
-                <Button title="Viewing Lain" variant="ghost" size="sm" onPress={() => setSheet("viewing")} testID="lead-another-viewing" />
+                <Button title={t("Follow-up")} variant="ghost" size="sm" onPress={() => setSheet("followup")} testID="lead-followup-button" />
+                <Button title={t("Viewing Lain")} variant="ghost" size="sm" onPress={() => setSheet("viewing")} testID="lead-another-viewing" />
               </View>
             </>
           ) : (
             <>
-              <RNText style={s.kicker}>Langkah berikutnya</RNText>
+              <RNText style={s.kicker}>{t("Langkah berikutnya")}</RNText>
               <RNText style={s.stepText}>
-                {lead.next_followup_date ? `Follow-up dijadwalkan ${dateLabel(lead.next_followup_date + "T00:00:00")}.` : lead.matched_unit ? `Tawarkan unit ${lead.matched_unit.name} dan ajak viewing.` : "Kabari dan tanyakan kebutuhannya."}
+                {lead.next_followup_date ? t("Follow-up dijadwalkan {date}.", { date: dateLabel(lead.next_followup_date + "T00:00:00") }) : lead.matched_unit ? t("Tawarkan unit {name} dan ajak viewing.", { name: lead.matched_unit.name }) : t("Kabari dan tanyakan kebutuhannya.")}
               </RNText>
-              <Button title="Jadwalkan Viewing" icon="calendar-check" onPress={() => setSheet("viewing")} testID="lead-schedule-viewing-button" style={s.stepBtn} />
+              <Button title={t("Jadwalkan Viewing")} icon="calendar-check" onPress={() => setSheet("viewing")} testID="lead-schedule-viewing-button" style={s.stepBtn} />
               <View style={s.row}>
-                <Button title="Follow-up" icon="whatsapp" variant="ghost" size="sm" onPress={() => setSheet("followup")} testID="lead-followup-button" />
-                <Button title="Langsung Nego" variant="ghost" size="sm" onPress={() => setSheet("negotiation")} testID="lead-direct-nego" />
+                <Button title={t("Follow-up")} icon="whatsapp" variant="ghost" size="sm" onPress={() => setSheet("followup")} testID="lead-followup-button" />
+                <Button title={t("Langsung Nego")} variant="ghost" size="sm" onPress={() => setSheet("negotiation")} testID="lead-direct-nego" />
               </View>
             </>
           )}
         </Card>
 
         {/* Profile */}
-        <ListGroup title="Profil" testID="lead-profile">
+        <ListGroup title={t("Profil")} testID="lead-profile">
           <ListRow
             label={t("Hot Buyer")}
             sub={t("Tandai kalau prospek ini serius dan siap sewa.")}
@@ -198,14 +198,14 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
             right={<Switch testID="lead-hot-toggle" value={lead.interest === "high"} onValueChange={(v) => setHot.mutate(v)} trackColor={{ false: colors.borderStrong, true: colors.error }} thumbColor="#FFFFFF" />}
           />
           {lead.phone ? (
-            <ListRow label="WhatsApp" value={lead.phone} icon="whatsapp" tone="success" onPress={wa ? () => Linking.openURL(wa) : undefined} testID="lead-phone-row" />
+            <ListRow label={t("WhatsApp")} value={lead.phone} icon="whatsapp" tone="success" onPress={wa ? () => Linking.openURL(wa) : undefined} testID="lead-phone-row" />
           ) : null}
           <ListRow label={t("Preferensi")} value={prefSummary(lead) || "-"} icon="building" tone="info" testID="lead-pref-row" />
           {/* Older prospects may still carry these. */}
-          {lead.budget_max || lead.budget_min ? <ListRow label="Budget" value={`${rupiah(lead.budget_max || lead.budget_min)}/bln`} icon="wallet" tone="brand" /> : null}
-          {lead.preferred_location ? <ListRow label="Lokasi" value={lead.preferred_location} icon="globe" tone="neutral" /> : null}
-          {expiredLabel(lead.move_in_date) ? <ListRow label="Expired" value={expiredLabel(lead.move_in_date)!.replace("Expired ", "")} icon="calendar-check" tone="warning" /> : null}
-          {lead.occupants ? <ListRow label="Jumlah orang" value={`${lead.occupants}`} icon="users" tone="neutral" /> : null}
+          {lead.budget_max || lead.budget_min ? <ListRow label={t("Budget")} value={`${rupiah(lead.budget_max || lead.budget_min)}${t("/bulan")}`} icon="wallet" tone="brand" /> : null}
+          {lead.preferred_location ? <ListRow label={t("Lokasi")} value={lead.preferred_location} icon="globe" tone="neutral" /> : null}
+          {expiredLabel(lead.move_in_date) ? <ListRow label={t("Expired")} value={expiredLabel(lead.move_in_date)!.replace("Expired ", "")} icon="calendar-check" tone="warning" /> : null}
+          {lead.occupants ? <ListRow label={t("Jumlah orang")} value={`${lead.occupants}`} icon="users" tone="neutral" /> : null}
         </ListGroup>
         {lead.requirements?.length || lead.notes || lead.summary || lead.ai_note || lead.quote ? (
           <Card>
@@ -224,18 +224,18 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
         {/* Matching */}
         {!closed ? (
           <View style={{ gap: spacing.md }}>
-            <SectionTitle>Unit yang cocok</SectionTitle>
+            <SectionTitle>{t("Unit yang cocok")}</SectionTitle>
             {lead.matched_unit ? (
               <Card testID="matched-unit-card" onPress={() => router.push(`/unit/${lead.matched_unit.id}` as any)}>
                 <View style={s.rowBetween}>
                   <View style={{ flex: 1 }}>
                     <RNText style={s.matchName}>{lead.matched_unit.name}</RNText>
-                    <RNText style={s.muted}>{[unitKind(lead.matched_unit), mainPrice(lead.matched_unit, { m: t("/bulan"), d: t("/malam"), y: t("/tahun") })].filter(Boolean).join(" · ")}</RNText>
+                    <RNText style={s.muted}>{[unitKind(lead.matched_unit), mainPrice(lead.matched_unit, { m: t("/bulan"), d: t("/hari"), y: t("/tahun") })].filter(Boolean).join(" · ")}</RNText>
                   </View>
-                  <StatusPill label="Dipilih" tone="success" testID="matched-pill" />
+                  <StatusPill label={t("Dipilih")} tone="success" testID="matched-pill" />
                   <Icon name="chevron-right" size={18} color={colors.brandPrimary} />
                 </View>
-                {lead.match_reasons?.length ? <RNText style={s.reasons}>✓ {lead.match_reasons.join("  ✓ ")}</RNText> : null}
+                {lead.match_reasons?.length ? <RNText style={s.reasons}>✓ {lead.match_reasons.map((r: string) => t(r)).join("  ✓ ")}</RNText> : null}
               </Card>
             ) : null}
             {(lead.suggestions || []).filter((x: any) => x.unit.id !== lead.matched_unit?.id).map((x: any) => (
@@ -243,22 +243,22 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
                 <View style={s.rowBetween}>
                   <PressableScale style={{ flex: 1 }} role="link" onPress={() => router.push(`/unit/${x.unit.id}` as any)}>
                     <RNText style={s.suggestName}>{x.unit.name} <RNText style={{ color: colors.brandPrimary }}>›</RNText></RNText>
-                    <RNText style={s.muted}>{[unitKind(x.unit), mainPrice(x.unit, { m: t("/bulan"), d: t("/malam"), y: t("/tahun") })].filter(Boolean).join(" · ")}</RNText>
-                    <RNText style={s.reasons}>✓ {x.reasons.join("  ✓ ")}</RNText>
+                    <RNText style={s.muted}>{[unitKind(x.unit), mainPrice(x.unit, { m: t("/bulan"), d: t("/hari"), y: t("/tahun") })].filter(Boolean).join(" · ")}</RNText>
+                    <RNText style={s.reasons}>✓ {x.reasons.map((r: string) => t(r)).join("  ✓ ")}</RNText>
                   </PressableScale>
-                  <Button title="Pilih" variant="ghost" size="sm" onPress={() => pickUnit.mutate(x.unit.id)} testID={`pick-unit-${x.unit.id}`} />
+                  <Button title={t("Pilih")} variant="ghost" size="sm" onPress={() => pickUnit.mutate(x.unit.id)} testID={`pick-unit-${x.unit.id}`} />
                 </View>
               </Card>
             ))}
             {!lead.matched_unit && !(lead.suggestions || []).length ? (
-              <Card><RNText style={s.muted}>Belum ada unit kosong yang cocok. Lengkapi budget & tipe, atau tambah unit baru.</RNText></Card>
+              <Card><RNText style={s.muted}>{t("Belum ada unit kosong yang cocok. Lengkapi budget & tipe, atau tambah unit baru.")}</RNText></Card>
             ) : null}
           </View>
         ) : null}
 
         {lead.viewings?.length ? (
           <View style={{ gap: spacing.md }}>
-            <SectionTitle>Riwayat viewing</SectionTitle>
+            <SectionTitle>{t("Riwayat viewing")}</SectionTitle>
             {lead.viewings.map((vw: any) => (
               <Card key={vw.id}>
                 <View style={s.rowBetween}>
@@ -275,12 +275,12 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
 
         {lead.last_message ? (
           <Card>
-            <RNText style={s.kicker}>Pesan terakhir dikirim</RNText>
+            <RNText style={s.kicker}>{t("Pesan terakhir dikirim")}</RNText>
             <RNText style={s.notes}>{lead.last_message}</RNText>
           </Card>
         ) : null}
 
-        {!closed ? <Button title="Tandai Tidak Jadi" variant="danger" onPress={() => setSheet("lost")} testID="lead-not-interested-button" /> : null}
+        {!closed ? <Button title={t("Tandai Tidak Jadi")} variant="danger" onPress={() => setSheet("lost")} testID="lead-not-interested-button" /> : null}
       </ScrollView>
 
       <FollowupSheet lead={sheet === "followup" ? followTarget : null} onClose={() => setSheet(null)} />
@@ -290,17 +290,17 @@ export function LeadDetail({ id, open, embedded, onGone }: { id: string; open?: 
       {sheet === "negotiation" && !closed ? <NegotiationSheet lead={lead} onClose={() => setSheet(null)} onDone={done} onErr={onErr} /> : null}
       {sheet === "deal" && !closed ? <DealSheet lead={lead} onClose={() => setSheet(null)} onDone={done} onErr={onErr} /> : null}
 
-      <Sheet visible={sheet === "lost"} onClose={() => setSheet(null)} title={`${lead.name} tidak jadi?`} testID="lost-sheet">
+      <Sheet visible={sheet === "lost"} onClose={() => setSheet(null)} title={t("{name} tidak jadi?", { name: lead.name })} testID="lost-sheet">
         <View style={{ gap: spacing.md }}>
-          <Field label="Alasannya? (membantu lihat pola di Laporan)">
+          <Field label={t("Alasannya? (membantu lihat pola di Laporan)")}>
             <View style={s.wrap}>
               {LOST_REASONS.map((r) => (
-                <Chip key={r} label={r} active={lostReason === r} onPress={() => setLostReason(lostReason === r ? null : r)} testID={`lost-reason-${LOST_REASONS.indexOf(r)}`} />
+                <Chip key={r} label={t(r)} active={lostReason === r} onPress={() => setLostReason(lostReason === r ? null : r)} testID={`lost-reason-${LOST_REASONS.indexOf(r)}`} />
               ))}
             </View>
           </Field>
-          <RNText style={s.note}>Prospek dipindah ke “Tidak jadi” dan tidak dihitung sebagai prospek aktif. Bisa diaktifkan lagi kapan saja.</RNText>
-          <Button title="Ya, Tidak Jadi" variant="danger" onPress={() => markLost.mutate()} loading={markLost.isPending} testID="lost-confirm-button" />
+          <RNText style={s.note}>{t("Prospek dipindah ke “Tidak jadi” dan tidak dihitung sebagai prospek aktif. Bisa diaktifkan lagi kapan saja.")}</RNText>
+          <Button title={t("Ya, Tidak Jadi")} variant="danger" onPress={() => markLost.mutate()} loading={markLost.isPending} testID="lost-confirm-button" />
         </View>
       </Sheet>
     </View>
@@ -322,7 +322,7 @@ function IntervalChips({ value, onChange, prefix }: { value: number; onChange: (
   return (
     <View style={s.wrap}>
       {INTERVALS.map((it) => (
-        <Chip key={it.m} label={it.label} active={value === it.m} onPress={() => onChange(it.m)} testID={`${prefix}-interval-${it.m}`} />
+        <Chip key={it.m} label={t(it.label)} active={value === it.m} onPress={() => onChange(it.m)} testID={`${prefix}-interval-${it.m}`} />
       ))}
     </View>
   );
@@ -376,7 +376,7 @@ function UnitChips({ units, loaded, value, onPick, prefix }: { units: any[]; loa
   return (
     <View style={s.wrap}>
       {units.map((u: any) => (
-        <Chip key={u.id} label={[u.name, mainPrice(u, { m: t("/bulan"), d: t("/malam"), y: t("/tahun") })].filter(Boolean).join(" · ")} active={value === u.id} onPress={() => onPick(u)} testID={`${prefix}-unit-${u.id}`} />
+        <Chip key={u.id} label={[u.name, mainPrice(u, { m: t("/bulan"), d: t("/hari"), y: t("/tahun") })].filter(Boolean).join(" · ")} active={value === u.id} onPress={() => onPick(u)} testID={`${prefix}-unit-${u.id}`} />
       ))}
       {loaded && units.length === 0 ? (
         <View style={{ gap: spacing.sm }}>
@@ -392,11 +392,11 @@ function EditSheet({ lead, onClose, onDone, onErr }: SheetProps) {
   const [f, setF] = useState<LeadFormValue>(() => leadToForm(lead));
   const save = useMutation({
     mutationFn: () => api(`/leads/${lead.id}`, { method: "PATCH", body: formToBody(f) }),
-    onSuccess: () => onDone("Tersimpan ✓"),
+    onSuccess: () => onDone(t("Tersimpan ✓")),
     onError: onErr,
   });
   return (
-    <Sheet visible onClose={onClose} title={`Edit ${lead.name}`} testID="lead-edit-sheet" scroll>
+    <Sheet visible onClose={onClose} title={t("Edit {name}", { name: lead.name })} testID="lead-edit-sheet" scroll>
       <View style={{ gap: spacing.lg }}>
         <LeadForm value={f} onChange={setF} />
         <Button title={t("Simpan")} onPress={() => save.mutate()} loading={save.isPending} disabled={!leadFormValid(f)} testID="lead-edit-save" />
@@ -475,38 +475,38 @@ function NegotiationSheet({ lead, onClose, onDone, onErr }: SheetProps) {
           payment_interval_months: n.interval, commission: parseMoney(n.commission),
         },
       }),
-    onSuccess: () => onDone("Negosiasi tersimpan ✓"),
+    onSuccess: () => onDone(t("Negosiasi tersimpan ✓")),
     onError: onErr,
   });
   return (
-    <Sheet visible onClose={onClose} title={`Negosiasi ${lead.name}`} testID="negotiation-sheet" scroll>
+    <Sheet visible onClose={onClose} title={t("Negosiasi {name}", { name: lead.name })} testID="negotiation-sheet" scroll>
       <View style={{ gap: spacing.md }}>
-        <Field label="Unit">
+        <Field label={t("Unit")}>
           <UnitChips units={units} loaded={loaded} value={n.unit} onPick={(u) => setN({ ...n, unit: u.id, price: n.price || moneyInput(u.monthly_price) })} prefix="nego" />
         </Field>
         <View style={s.row}>
           <View style={{ flex: 1 }}>
-            <Field label="Harga disepakati / bulan"><Input testID="nego-price-input" value={n.price} onChangeText={(x) => setN({ ...n, price: typeMoney(x) })} keyboardType="numeric" placeholder="3.000.000" /></Field>
+            <Field label={t("Harga disepakati / bulan")}><Input testID="nego-price-input" value={n.price} onChangeText={(x) => setN({ ...n, price: typeMoney(x) })} keyboardType="numeric" placeholder="3.000.000" /></Field>
           </View>
           <View style={{ flex: 1 }}>
-            <Field label="Deposit"><Input testID="nego-deposit-input" value={n.deposit} onChangeText={(x) => setN({ ...n, deposit: typeMoney(x) })} keyboardType="numeric" placeholder="1.000.000" /></Field>
+            <Field label={t("Deposit")}><Input testID="nego-deposit-input" value={n.deposit} onChangeText={(x) => setN({ ...n, deposit: typeMoney(x) })} keyboardType="numeric" placeholder="1.000.000" /></Field>
           </View>
         </View>
-        <Field label="Lama kontrak">
+        <Field label={t("Lama kontrak")}>
           <View style={s.wrap}>
             {MONTH_OPTIONS.map((m) => (
-              <Chip key={m} label={`${m} bulan`} active={n.months === m} onPress={() => setN({ ...n, months: m })} testID={`nego-months-${m}`} />
+              <Chip key={m} label={t("{n} bulan", { n: m })} active={n.months === m} onPress={() => setN({ ...n, months: m })} testID={`nego-months-${m}`} />
             ))}
           </View>
         </Field>
-        <Field label="Dibayar tiap">
+        <Field label={t("Dibayar tiap")}>
           <IntervalChips value={n.interval} onChange={(m) => setN({ ...n, interval: m })} prefix="nego" />
         </Field>
         <Field label={t("Komisi kamu (opsional)")} hint={t("Hanya kamu yang lihat.")}>
           <Input testID="nego-commission-input" value={n.commission} onChangeText={(x) => setN({ ...n, commission: typeMoney(x) })} keyboardType="numeric" placeholder="1.500.000" />
         </Field>
         <Button title={t("Simpan Negosiasi")} onPress={() => save.mutate()} loading={save.isPending} disabled={!ready} testID="nego-save-button" />
-        <RNText style={s.note}>Angka ini otomatis dipakai saat kamu tandai deal — nggak perlu ketik ulang.</RNText>
+        <RNText style={s.note}>{t("Angka ini otomatis dipakai saat kamu tandai deal — nggak perlu ketik ulang.")}</RNText>
       </View>
     </Sheet>
   );
@@ -539,49 +539,49 @@ function DealSheet({ lead, onClose, onDone, onErr }: SheetProps) {
         },
       }),
     onSuccess: (r: any) => {
-      onDone("Tenant baru tercatat dan tagihan dibuat ✓");
-      celebrate(`Deal dengan ${lead.name}!`, "Tenant baru tercatat. Tagihannya sudah SewAIn buatkan.");
+      onDone(t("Tenant baru tercatat dan tagihan dibuat ✓"));
+      celebrate(t("Deal dengan {name}!", { name: lead.name }), t("Tenant baru tercatat. Tagihannya sudah SewAIn buatkan."));
       router.push(`/tenant/${r.tenant_id}` as any);
     },
     onError: onErr,
   });
   return (
-    <Sheet visible onClose={onClose} title={`Deal — ${lead.name} jadi tenant`} testID="deal-sheet" scroll>
+    <Sheet visible onClose={onClose} title={t("Deal — {name} jadi tenant", { name: lead.name })} testID="deal-sheet" scroll>
       <View style={{ gap: spacing.md }}>
-        <Field label="Unit">
+        <Field label={t("Unit")}>
           <UnitChips units={units} loaded={loaded} value={d.unit} onPick={(u) => setD({ ...d, unit: u.id, rent: d.rent || moneyInput(u.monthly_price) })} prefix="deal" />
         </Field>
         <View style={s.row}>
           <View style={{ flex: 1 }}>
-            <Field label="Sewa / bulan"><Input testID="deal-rent-input" value={d.rent} onChangeText={(x) => setD({ ...d, rent: typeMoney(x) })} keyboardType="numeric" /></Field>
+            <Field label={t("Sewa / bulan")}><Input testID="deal-rent-input" value={d.rent} onChangeText={(x) => setD({ ...d, rent: typeMoney(x) })} keyboardType="numeric" /></Field>
           </View>
           <View style={{ flex: 1 }}>
-            <Field label="Deposit"><Input testID="deal-deposit-input" value={d.deposit} onChangeText={(x) => setD({ ...d, deposit: typeMoney(x) })} keyboardType="numeric" /></Field>
+            <Field label={t("Deposit")}><Input testID="deal-deposit-input" value={d.deposit} onChangeText={(x) => setD({ ...d, deposit: typeMoney(x) })} keyboardType="numeric" /></Field>
           </View>
         </View>
         <View style={s.row}>
           <View style={{ flex: 1 }}>
-            <Field label="Mulai sewa"><DateInput testID="deal-start-input" value={d.start} onChange={(x) => setD({ ...d, start: x })} /></Field>
+            <Field label={t("Mulai sewa")}><DateInput testID="deal-start-input" value={d.start} onChange={(x) => setD({ ...d, start: x })} /></Field>
           </View>
           <View style={{ flex: 1 }}>
-            <Field label="Bayar tiap tanggal"><Input testID="deal-due-input" value={d.due} onChangeText={(x) => setD({ ...d, due: x.replace(/\D/g, "").slice(0, 2) })} keyboardType="numeric" /></Field>
+            <Field label={t("Bayar tiap tanggal")}><Input testID="deal-due-input" value={d.due} onChangeText={(x) => setD({ ...d, due: x.replace(/\D/g, "").slice(0, 2) })} keyboardType="numeric" /></Field>
           </View>
         </View>
-        <Field label="Lama kontrak">
+        <Field label={t("Lama kontrak")}>
           <View style={s.wrap}>
             {MONTH_OPTIONS.map((m) => (
-              <Chip key={m} label={`${m} bulan`} active={d.months === m} onPress={() => setD({ ...d, months: m })} testID={`deal-months-${m}`} />
+              <Chip key={m} label={t("{n} bulan", { n: m })} active={d.months === m} onPress={() => setD({ ...d, months: m })} testID={`deal-months-${m}`} />
             ))}
           </View>
         </Field>
-        <Field label="Dibayar tiap">
+        <Field label={t("Dibayar tiap")}>
           <IntervalChips value={d.interval} onChange={(m) => setD({ ...d, interval: m })} prefix="deal" />
         </Field>
         <Field label={t("Komisi kamu (opsional)")} hint={t("Hanya kamu yang lihat.")}>
           <Input testID="deal-commission-input" value={d.commission} onChangeText={(x) => setD({ ...d, commission: typeMoney(x) })} keyboardType="numeric" placeholder="1.500.000" />
         </Field>
         <Button title={t("Jadikan Tenant")} onPress={() => save.mutate()} loading={save.isPending} disabled={!ready} testID="deal-save-button" />
-        <RNText style={s.note}>Unit jadi terisi, tagihan dibuat sesuai jadwal bayar, dan semua catatan prospek ikut pindah ke data tenant.</RNText>
+        <RNText style={s.note}>{t("Unit jadi terisi, tagihan dibuat sesuai jadwal bayar, dan semua catatan prospek ikut pindah ke data tenant.")}</RNText>
       </View>
     </Sheet>
   );

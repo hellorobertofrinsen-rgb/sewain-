@@ -46,26 +46,26 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
 
   const markPaid = useMutation({
     mutationFn: (pid: string) => api(`/payments/${pid}/mark-paid`, { method: "POST" }),
-    onSuccess: () => { invalidate(); toast("Lunas ✓"); },
-    onError: (e: any) => toast(e?.message || "Gagal menandai lunas", "error"),
+    onSuccess: () => { invalidate(); toast(t("Lunas ✓")); },
+    onError: (e: any) => toast(e?.message || t("Gagal menandai lunas"), "error"),
   });
   const markUnpaid = useMutation({
     mutationFn: (pid: string) => api(`/payments/${pid}/mark-unpaid`, { method: "POST" }),
-    onSuccess: () => { invalidate(); toast("Dikembalikan ke belum bayar"); },
+    onSuccess: () => { invalidate(); toast(t("Dikembalikan ke belum bayar")); },
   });
   const checkout = useMutation({
     mutationFn: () => api(`/tenants/${id}/checkout`, { method: "POST" }),
     onSuccess: () => {
       invalidate();
-      toast("Checkout selesai — unit kembali kosong");
+      toast(t("Checkout selesai — unit kembali kosong"));
       if (embedded) onGone?.();
       else router.back();
     },
-    onError: (e: any) => toast(e?.message || "Gagal checkout", "error"),
+    onError: (e: any) => toast(e?.message || t("Gagal checkout"), "error"),
   });
 
-  if (isLoading) return <View style={s.root}><Spinner label="Memuat tenant…" /></View>;
-  if (error || !tenant) return <View style={s.root}><ScreenHeader embedded={embedded} title="Tenant" /><ErrorBox message={(error as any)?.message || "Tidak ditemukan"} onRetry={refetch} /></View>;
+  if (isLoading) return <View style={s.root}><Spinner label={t("Memuat tenant…")} /></View>;
+  if (error || !tenant) return <View style={s.root}><ScreenHeader embedded={embedded} title={t("Tenant")} /><ErrorBox message={(error as any)?.message || t("Tidak ditemukan")} onRetry={refetch} /></View>;
 
   const active = tenant.status === "aktif";
   const pays: any[] = tenant.payments || [];
@@ -83,7 +83,7 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
 
   return (
     <View style={s.root}>
-      <ScreenHeader embedded={embedded} title={tenant.name} right={!active ? <StatusPill label="Checkout" tone="neutral" testID="tenant-checkout-pill" /> : null} />
+      <ScreenHeader embedded={embedded} title={tenant.name} right={!active ? <StatusPill label={t("Checkout")} tone="neutral" testID="tenant-checkout-pill" /> : null} />
       <ScrollView contentContainerStyle={[s.body, { paddingBottom: (embedded ? 0 : insets.bottom) + spacing.xxxl }]} showsVerticalScrollIndicator={false} testID="tenant-detail-screen">
         <View style={s.person}>
           <PhotoAvatar name={tenant.name} photo={tenant.photo} path={`/tenants/${tenant.id}`} testID="tenant-photo" refresh={["tenant", "tenants", "today"]} />
@@ -94,15 +94,15 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
         </View>
         {/* Lease */}
         <Card testID="lease-card" style={soon && active ? { borderWidth: 1.5, borderColor: withAlpha(colors.warning, 0.5) } : undefined}>
-          <RNText style={s.kicker}>Kontrak · Unit {tenant.unit_name}</RNText>
-          <RNText style={s.big}>{active ? leaseLeftLabel(tenant.days_left) : "Sudah checkout"}</RNText>
+          <RNText style={s.kicker}>{t("Kontrak · Unit {name}", { name: tenant.unit_name })}</RNText>
+          <RNText style={s.big}>{active ? leaseLeftLabel(tenant.days_left) : t("Sudah checkout")}</RNText>
           <RNText style={s.muted}>
-            {dateLabel(tenant.start_date + "T00:00:00")} — {tenant.end_date ? dateLabel(tenant.end_date + "T00:00:00") : "tanpa tanggal selesai"}
+            {dateLabel(tenant.start_date + "T00:00:00")} — {tenant.end_date ? dateLabel(tenant.end_date + "T00:00:00") : t("tanpa tanggal selesai")}
           </RNText>
           <View style={s.facts}>
-            <Fact label="Sewa / bulan" value={rupiah(tenant.monthly_rent)} />
-            <Fact label="Dibayar" value={INTERVAL_LABEL[tenant.payment_interval_months || 1] || `${tenant.payment_interval_months} bulan`} />
-            <Fact label="Tanggal bayar" value={String(tenant.payment_due_day)} />
+            <Fact label={t("Sewa / bulan")} value={rupiah(tenant.monthly_rent)} />
+            <Fact label={t("Dibayar")} value={t(INTERVAL_LABEL[tenant.payment_interval_months || 1] || "{n} bulan", { n: tenant.payment_interval_months })} />
+            <Fact label={t("Tanggal bayar")} value={String(tenant.payment_due_day)} />
           </View>
           {unpaid.length ? (
             <Button
@@ -115,7 +115,7 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
           ) : null}
           {active && wa && tenant.end_date ? (
             <Button
-              title="Follow-up Extend"
+              title={t("Follow-up Extend")}
               variant={unpaid.length ? "secondary" : "primary"}
               icon="whatsapp"
               onPress={() => Linking.openURL(waLink(tenant.phone, leaseRenewalMessage({ name: tenant.name, unit_name: tenant.unit_name, end_date: tenant.end_date }))!)}
@@ -125,7 +125,7 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
           ) : null}
           {active ? (
             <Button
-              title="Catat Perpanjangan"
+              title={t("Catat Perpanjangan")}
               variant="ghost"
               onPress={() => setLease({ id: tenant.id, name: tenant.name, unit_name: tenant.unit_name, end_date: tenant.end_date, days_left: tenant.days_left, phone: tenant.phone })}
               testID="tenant-extend-button"
@@ -135,54 +135,54 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
         </Card>
 
         {/* People */}
-        <ListGroup title="Orang" testID="tenant-people">
+        <ListGroup title={t("Orang")} testID="tenant-people">
           <ListRow
             label={tenant.name}
-            sub={`Tenant${tenant.phone ? ` · ${tenant.phone}` : ""}`}
+            sub={`${t("Tenant")}${tenant.phone ? ` · ${tenant.phone}` : ""}`}
             icon="key"
             tone="success"
-            right={wa ? <Button title="WhatsApp" icon="whatsapp" variant="secondary" size="sm" onPress={() => Linking.openURL(wa)} testID="tenant-wa" /> : undefined}
+            right={wa ? <Button title={t("WhatsApp")} icon="whatsapp" variant="secondary" size="sm" onPress={() => Linking.openURL(wa)} testID="tenant-wa" /> : undefined}
           />
           {tenant.owner ? (
             <ListRow
-              label={tenant.owner.name || "Pemilik"}
-              sub={`Pemilik unit${tenant.owner.phone ? ` · ${tenant.owner.phone}` : ""}`}
+              label={tenant.owner.name || t("Pemilik")}
+              sub={`${t("Pemilik unit")}${tenant.owner.phone ? ` · ${tenant.owner.phone}` : ""}`}
               icon="user"
               tone="brand"
-              right={ownerWa ? <Button title="WhatsApp" icon="whatsapp" variant="secondary" size="sm" onPress={() => Linking.openURL(ownerWa)} testID="owner-wa" /> : undefined}
+              right={ownerWa ? <Button title={t("WhatsApp")} icon="whatsapp" variant="secondary" size="sm" onPress={() => Linking.openURL(ownerWa)} testID="owner-wa" /> : undefined}
             />
           ) : null}
-          <ListRow label="Deposit" value={tenant.deposit ? rupiah(tenant.deposit) : "-"} icon="shield" tone="neutral" />
-          {tenant.commission ? <ListRow label="Komisi kamu" value={rupiah(tenant.commission)} icon="trending-up" tone="brand" /> : null}
+          <ListRow label={t("Deposit")} value={tenant.deposit ? rupiah(tenant.deposit) : "-"} icon="shield" tone="neutral" />
+          {tenant.commission ? <ListRow label={t("Komisi kamu")} value={rupiah(tenant.commission)} icon="trending-up" tone="brand" /> : null}
         </ListGroup>
 
         {/* Bills */}
         <View style={{ gap: spacing.md }}>
           <View style={s.rowBetween}>
-            <SectionTitle>Tagihan sewa</SectionTitle>
-            {outstanding > 0 ? <RNText style={s.late}>Telat: {rupiah(outstanding)}</RNText> : null}
+            <SectionTitle>{t("Tagihan sewa")}</SectionTitle>
+            {outstanding > 0 ? <RNText style={s.late}>{t("Telat: {amount}", { amount: rupiah(outstanding) })}</RNText> : null}
           </View>
           {visibleBills.map((p: any) => (
             <Card key={p.id} testID={`payment-card-${p.id}`}>
               <View style={s.rowBetween}>
                 <View style={{ flex: 1, gap: 2 }}>
                   <RNText style={s.period}>{periodLabel(p.period, p.months || 1)}</RNText>
-                  <RNText style={s.muted}>{rupiah(p.amount)}{(p.months || 1) > 1 ? ` (${p.months} bulan)` : ""} · jatuh tempo {dateLabel(p.due_date + "T00:00:00")}</RNText>
+                  <RNText style={s.muted}>{rupiah(p.amount)}{(p.months || 1) > 1 ? ` (${t("{n} bulan", { n: p.months })})` : ""} · {t("jatuh tempo {date}", { date: dateLabel(p.due_date + "T00:00:00") })}</RNText>
                 </View>
                 {p.status === "lunas" ? (
                   <PressableScale onLongPress={() => markUnpaid.mutate(p.id)} testID={`payment-status-${p.id}`}>
-                    <StatusPill label="Lunas" tone="success" />
+                    <StatusPill label={t("Lunas")} tone="success" />
                   </PressableScale>
                 ) : (
-                  <StatusPill label={p.days_late > 0 ? `Telat ${p.days_late} hari` : "Belum bayar"} tone={p.days_late > 0 ? "error" : "warning"} testID={`payment-status-${p.id}`} />
+                  <StatusPill label={p.days_late > 0 ? t("Telat {n} hari", { n: p.days_late }) : t("Belum bayar")} tone={p.days_late > 0 ? "error" : "warning"} testID={`payment-status-${p.id}`} />
                 )}
               </View>
               {p.status !== "lunas" ? (
                 <View style={s.actions}>
-                  <Button title="Tandai Lunas" size="sm" onPress={() => markPaid.mutate(p.id)} testID={`payment-paid-${p.id}`} />
+                  <Button title={t("Tandai Lunas")} size="sm" onPress={() => markPaid.mutate(p.id)} testID={`payment-paid-${p.id}`} />
                   <Button title={t("Invoice")} variant="ghost" size="sm" icon="whatsapp" onPress={() => setInvoice(billTarget(p))} testID={`payment-invoice-${p.id}`} />
                   <Button
-                    title="Ingatkan"
+                    title={t("Ingatkan")}
                     variant="ghost"
                     size="sm"
                     onPress={() => setRemind({ id: p.id, name: tenant.name, unit_name: tenant.unit_name, amount: p.amount, due_date: p.due_date, period: p.period, months: p.months, days_late: p.days_late, phone: tenant.phone })}
@@ -193,40 +193,40 @@ export function TenantDetail({ id, embedded, onGone }: { id: string; embedded?: 
             </Card>
           ))}
           {pays.length > visibleBills.length || showAllBills ? (
-            <Button title={showAllBills ? "Ringkas" : `Lihat semua ${pays.length} tagihan`} variant="ghost" size="sm" onPress={() => setShowAllBills(!showAllBills)} testID="bills-toggle" />
+            <Button title={showAllBills ? t("Ringkas") : t("Lihat semua {n} tagihan", { n: pays.length })} variant="ghost" size="sm" onPress={() => setShowAllBills(!showAllBills)} testID="bills-toggle" />
           ) : null}
         </View>
 
         {/* History from the lead journey */}
         {h ? (
           <Card testID="tenant-history-card" onPress={() => router.push(`/lead/${h.lead_id}` as any)}>
-            <RNText style={s.kicker}>Riwayat sebelum jadi tenant</RNText>
+            <RNText style={s.kicker}>{t("Riwayat sebelum jadi tenant")}</RNText>
             <RNText style={s.muted}>
               {[
-                h.budget_max ? `Budget ${rupiah(h.budget_max)}` : null,
+                h.budget_max ? t("Budget {amount}", { amount: rupiah(h.budget_max) }) : null,
                 h.unit_type,
-                h.occupants ? `${h.occupants} orang` : null,
-                h.viewings ? `${h.viewings}× viewing` : null,
-              ].filter(Boolean).join(" · ") || "Dari prospek"}
+                h.occupants ? t("{n} orang", { n: h.occupants }) : null,
+                h.viewings ? t("{n}× viewing", { n: h.viewings }) : null,
+              ].filter(Boolean).join(" · ") || t("Dari prospek")}
             </RNText>
-            {h.requirements?.length ? <RNText style={s.muted}>Kebutuhan: {h.requirements.join(", ")}</RNText> : null}
+            {h.requirements?.length ? <RNText style={s.muted}>{t("Kebutuhan: {list}", { list: h.requirements.join(", ") })}</RNText> : null}
             {h.notes ? <RNText style={s.note}>{h.notes}</RNText> : null}
-            {h.negotiation_note ? <RNText style={s.note}>Nego: {h.negotiation_note}</RNText> : null}
+            {h.negotiation_note ? <RNText style={s.note}>{t("Nego: {note}", { note: h.negotiation_note })}</RNText> : null}
           </Card>
         ) : null}
 
-        {active ? <Button title="Proses Checkout" variant="danger" onPress={() => setCheckoutOpen(true)} testID="tenant-checkout-button" /> : null}
+        {active ? <Button title={t("Proses Checkout")} variant="danger" onPress={() => setCheckoutOpen(true)} testID="tenant-checkout-button" /> : null}
       </ScrollView>
 
       <ReminderSheet payment={remind} onClose={() => setRemind(null)} />
       <InvoiceSheet bill={invoice} onClose={() => setInvoice(null)} />
       <LeaseSheet tenant={lease} onClose={() => setLease(null)} />
 
-      <Sheet visible={checkoutOpen} onClose={() => setCheckoutOpen(false)} title={`Checkout ${tenant.name}?`} testID="checkout-sheet">
+      <Sheet visible={checkoutOpen} onClose={() => setCheckoutOpen(false)} title={t("Checkout {name}?", { name: tenant.name })} testID="checkout-sheet">
         <RNText style={s.note}>
-          Unit {tenant.unit_name} kembali KOSONG dan siap dicocokkan dengan prospek baru. Tagihan bulan-bulan setelah hari ini dibatalkan; tagihan yang sudah telat tetap tercatat.
+          {t("Unit {name} kembali KOSONG dan siap dicocokkan dengan prospek baru. Tagihan bulan-bulan setelah hari ini dibatalkan; tagihan yang sudah telat tetap tercatat.", { name: tenant.unit_name })}
         </RNText>
-        <Button title="Ya, Proses Checkout" variant="danger" onPress={() => checkout.mutate()} loading={checkout.isPending} testID="checkout-confirm-button" style={{ marginTop: spacing.lg }} />
+        <Button title={t("Ya, Proses Checkout")} variant="danger" onPress={() => checkout.mutate()} loading={checkout.isPending} testID="checkout-confirm-button" style={{ marginTop: spacing.lg }} />
       </Sheet>
     </View>
   );

@@ -7,12 +7,14 @@ import { LogoMark } from "@/src/components/Logo";
 import { Button, ErrorBox, Field, Input, PressableScale } from "@/src/components/ui";
 import { useAuth } from "@/src/lib/auth";
 import { cardShadow, fonts, largeTitle, makeStyles, radius, spacing } from "@/src/theme";
+import { Lang, t, useLang } from "@/src/lib/i18n";
 
 const SUPPORT_WA = "6282122232421";
 
 export default function Login() {
   const { login, register, demo } = useAuth();
   const s = useStyles();
+  const { lang, setLang } = useLang();
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
@@ -24,15 +26,15 @@ export default function Login() {
   const submit = async () => {
     setError("");
     if (!email.trim() || !password) {
-      setError("Isi email dan password dulu ya.");
+      setError(t("Isi email dan password dulu ya."));
       return;
     }
     if (mode === "register" && !name.trim()) {
-      setError("Isi namamu dulu ya.");
+      setError(t("Isi namamu dulu ya."));
       return;
     }
     if (mode === "register" && password.length < 8) {
-      setError("Password minimal 8 karakter.");
+      setError(t("Password minimal 8 karakter."));
       return;
     }
     setBusy("form");
@@ -40,7 +42,7 @@ export default function Login() {
       if (mode === "login") await login(email.trim(), password);
       else await register(name.trim(), email.trim(), password);
     } catch (e: any) {
-      setError(e?.message || "Gagal masuk. Coba lagi.");
+      setError(e?.message || t("Gagal masuk. Coba lagi."));
     } finally {
       setBusy(null);
     }
@@ -52,7 +54,7 @@ export default function Login() {
     try {
       await demo();
     } catch (e: any) {
-      setError(e?.message || "Gagal membuka demo. Coba lagi.");
+      setError(e?.message || t("Gagal membuka demo. Coba lagi."));
       setBusy(null);
     }
   };
@@ -64,33 +66,40 @@ export default function Login() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        <View style={s.langRow} testID="login-language">
+          {(["id", "en"] as Lang[]).map((l) => (
+            <PressableScale key={l} onPress={() => setLang(l)} style={[s.langBtn, lang === l && s.langBtnOn]} testID={`login-lang-${l}`} accessibilityLabel={l === "en" ? "English" : "Bahasa Indonesia"}>
+              <RNText style={[s.langText, lang === l && s.langTextOn]}>{l.toUpperCase()}</RNText>
+            </PressableScale>
+          ))}
+        </View>
         <View style={s.logoWrap}>
           <LogoMark size={56} />
-          <RNText style={s.wordmark}>SewAIn</RNText>
-          <RNText style={s.tagline}>Prospek, unit, dan tenant di satu tempat.</RNText>
-          <RNText style={s.sub}>Balas lebih cepat, prospek nggak ada yang hilang, tenant betah perpanjang.</RNText>
+          <RNText style={s.wordmark}>{t("SewAIn")}</RNText>
+          <RNText style={s.tagline}>{t("Prospek, unit, dan tenant di satu tempat.")}</RNText>
+          <RNText style={s.sub}>{t("Balas lebih cepat, prospek nggak ada yang hilang, tenant betah perpanjang.")}</RNText>
         </View>
 
         <View style={s.formCard}>
           {mode === "register" ? (
-            <Field label="Nama">
+            <Field label={t("Nama")}>
               <Input
                 testID="register-name-input"
                 value={name}
                 onChangeText={setName}
-                placeholder="Nama kamu"
+                placeholder={t("Nama kamu")}
                 autoCapitalize="words"
                 autoComplete="name"
                 enterKeyHint="next"
               />
             </Field>
           ) : null}
-          <Field label="Email">
+          <Field label={t("Email")}>
             <Input
               testID="login-email-input"
               value={email}
               onChangeText={setEmail}
-              placeholder="nama@email.com"
+              placeholder={t("nama@email.com")}
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="email"
@@ -98,7 +107,7 @@ export default function Login() {
               enterKeyHint="next"
             />
           </Field>
-          <Field label="Password" hint={mode === "register" ? "Minimal 8 karakter." : undefined}>
+          <Field label={t("Password")} hint={mode === "register" ? t("Minimal 8 karakter.") : undefined}>
             <Input
               testID="login-password-input"
               value={password}
@@ -111,10 +120,10 @@ export default function Login() {
             />
           </Field>
           {error ? <ErrorBox message={error} /> : null}
-          {mode === "register" ? <RNText style={s.trial}>Gratis Premium 14 hari. Tanpa kartu kredit.</RNText> : null}
+          {mode === "register" ? <RNText style={s.trial}>{t("Gratis Premium 14 hari. Tanpa kartu kredit.")}</RNText> : null}
           <Button
             testID="login-submit-button"
-            title={mode === "login" ? "Masuk" : "Daftar"}
+            title={mode === "login" ? t("Masuk") : t("Daftar")}
             onPress={submit}
             loading={busy === "form"}
             size="lg"
@@ -128,7 +137,7 @@ export default function Login() {
             style={{ paddingVertical: spacing.sm }}
           >
             <RNText style={s.toggleText}>
-              {mode === "login" ? "Belum punya akun? Daftar gratis" : "Sudah punya akun? Masuk"}
+              {mode === "login" ? t("Belum punya akun? Daftar gratis") : t("Sudah punya akun? Masuk")}
             </RNText>
           </PressableScale>
           {mode === "login" ? (
@@ -142,20 +151,20 @@ export default function Login() {
               }
               style={{ paddingVertical: 4 }}
             >
-              <RNText style={s.forgot}>Lupa password?</RNText>
+              <RNText style={s.forgot}>{t("Lupa password?")}</RNText>
             </PressableScale>
           ) : null}
         </View>
 
         <View style={s.dividerRow}>
           <View style={s.dividerLine} />
-          <RNText style={s.dividerText}>atau</RNText>
+          <RNText style={s.dividerText}>{t("atau")}</RNText>
           <View style={s.dividerLine} />
         </View>
 
         <Button
           testID="demo-button"
-          title="Coba Demo"
+          title={t("Coba Demo")}
           variant="ghost"
           size="lg"
           icon="arrow-right"
@@ -168,11 +177,11 @@ export default function Login() {
         </RNText>
         <View style={s.legal}>
           <PressableScale role="link" onPress={() => router.push("/privasi" as any)} testID="link-privacy">
-            <RNText style={s.legalLink}>Kebijakan Privasi</RNText>
+            <RNText style={s.legalLink}>{t("Kebijakan Privasi")}</RNText>
           </PressableScale>
           <RNText style={s.legalDot}>·</RNText>
           <PressableScale role="link" onPress={() => router.push("/ketentuan" as any)} testID="link-terms">
-            <RNText style={s.legalLink}>Ketentuan Layanan</RNText>
+            <RNText style={s.legalLink}>{t("Ketentuan Layanan")}</RNText>
           </PressableScale>
         </View>
       </KeyboardAwareScrollView>
@@ -181,6 +190,11 @@ export default function Login() {
 }
 
 const useStyles = makeStyles((colors) => ({
+  langRow: { flexDirection: "row", alignSelf: "flex-end", gap: 2, padding: 3, borderRadius: 999, backgroundColor: colors.surfaceTertiary, marginTop: -spacing.xl, marginBottom: spacing.md },
+  langBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  langBtnOn: { backgroundColor: colors.surfaceSecondary, ...cardShadow },
+  langText: { color: colors.muted, ...fonts.semibold, fontSize: 13 },
+  langTextOn: { color: colors.onSurface },
   root: { flex: 1, backgroundColor: colors.surface },
   logoWrap: { alignItems: "center", gap: spacing.sm, marginBottom: spacing.xl },
   wordmark: { ...largeTitle, color: colors.onSurface, marginTop: spacing.sm },

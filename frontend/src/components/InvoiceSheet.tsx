@@ -42,7 +42,7 @@ export function InvoiceSheet({ bill, onClose }: { bill: InvoiceTarget | null; on
         <View style={{ flex: 1, gap: 2 }}>
           <RNText style={s.optionLabel}>{label}</RNText>
           {acc ? (
-            <RNText style={s.optionSub}>{acc.bank} {acc.account}{acc.holder ? ` · a.n. ${acc.holder}` : ""}</RNText>
+            <RNText style={s.optionSub}>{acc.bank} {acc.account}{acc.holder ? ` · ${t("a.n. {name}", { name: acc.holder })}` : ""}</RNText>
           ) : (
             <RNText style={[s.optionSub, { color: colors.warning }]}>{t("Belum diisi")}</RNText>
           )}

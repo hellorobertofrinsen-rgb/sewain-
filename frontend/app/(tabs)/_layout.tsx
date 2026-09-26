@@ -22,9 +22,9 @@ const SUPPORT_WA = "6282122232421";
 // sits in the sidebar.
 const TABS: { name: string; label: string; icon: IconName }[] = [
   { name: "today", label: "Home", icon: "home" },
-  { name: "units", label: "Unit", icon: "building" },
-  { name: "leads", label: "Prospek", icon: "person" },
-  { name: "tenants", label: "Tenant", icon: "key" },
+  { name: "units", label: "Unit||tab", icon: "building" },
+  { name: "leads", label: "Prospek||tab", icon: "person" },
+  { name: "tenants", label: "Tenant||tab", icon: "key" },
 ];
 
 // Items in the ☰ menu (and the lower part of the desktop sidebar).
@@ -216,9 +216,9 @@ function Sidebar({ onAdd }: { onAdd: () => void }) {
           <RNText numberOfLines={1} style={s.userEmail}>{user?.agency || user?.email || ""}</RNText>
         </View>
         {user?.is_demo ? (
-          <StatusPill label="Demo" tone="warning" testID="demo-badge-sidebar" />
+          <StatusPill label={t("Demo")} tone="warning" testID="demo-badge-sidebar" />
         ) : plan?.plan === "premium" && !plan.trial ? (
-          <StatusPill label="Premium" tone="brand" testID="premium-badge-sidebar" />
+          <StatusPill label={t("Premium")} tone="brand" testID="premium-badge-sidebar" />
         ) : null}
       </PressableScale>
     </View>
@@ -258,9 +258,9 @@ export default function TabsLayout() {
       tabBar={(props) => (wideWeb ? null : <TabBar {...props} onAdd={() => setQuickOpen(true)} />)}
     >
       <Tabs.Screen name="today" options={{ title: t("Home") }} />
-      <Tabs.Screen name="units" options={{ title: t("Unit") }} />
-      <Tabs.Screen name="leads" options={{ title: t("Prospek") }} />
-      <Tabs.Screen name="tenants" options={{ title: t("Tenant") }} />
+      <Tabs.Screen name="units" options={{ title: t("Unit||tab") }} />
+      <Tabs.Screen name="leads" options={{ title: t("Prospek||tab") }} />
+      <Tabs.Screen name="tenants" options={{ title: t("Tenant||tab") }} />
       <Tabs.Screen name="todo" options={{ title: t("To-do list") }} />
       <Tabs.Screen name="laporan" options={{ title: t("Laporan") }} />
       <Tabs.Screen name="testimoni" options={{ title: t("Cetak Testimoni") }} />

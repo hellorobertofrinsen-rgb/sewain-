@@ -10,17 +10,18 @@ import { UnitDetail } from "@/app/unit/[id]";
 import { useIsWide } from "@/src/lib/layout";
 import { t } from "@/src/lib/i18n";
 import { useParamTrigger } from "@/src/lib/useParamTrigger";
-import { UnitForm, UnitFormValue, emptyUnitForm, unitFormBody, unitFormValid } from "@/src/components/UnitForm";
-import { unitKind } from "@/src/lib/unitKinds";
+import { UnitForm, UnitFormValue, emptyUnitForm, unitFormBody, unitFormMissing } from "@/src/components/UnitForm";
+import { FACILITIES, furnishingLabel, unitKind } from "@/src/lib/unitKinds";
+import { Icon } from "@/src/components/Icon";
+import { availability } from "@/src/lib/availability";
 import { STATE_TRANSITION } from "@/src/motion";
 import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Spinner, StatusPill, PressableScale } from "@/src/components/ui";
 import { UnitThumb } from "@/src/components/UnitThumb";
 import { PriceTags, hasPrice } from "@/src/components/PriceTags";
 import { useToast } from "@/src/components/Toast";
-import { api } from "@/src/lib/api";
+import { api, uploadFile } from "@/src/lib/api";
 import { usePlan } from "@/src/lib/plan";
-import { UNIT_STATUS, daysFromNow } from "@/src/lib/format";
-import { fonts, makeStyles, spacing } from "@/src/theme";
+import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 const STATUS_FILTERS = [
   { key: "semua", label: "Semua" },
@@ -35,6 +36,7 @@ export default function UnitsScreen() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const s = useStyles();
+  const { colors } = useTheme();
   const wide = useIsWide();
   const params = useLocalSearchParams<{ status?: string }>();
   const [filter, setFilter] = useState(params.status || "semua");
@@ -52,9 +54,17 @@ export default function UnitsScreen() {
   });
   // form
   const [f, setF] = useState<UnitFormValue>(emptyUnitForm);
+  const missing = unitFormMissing(f, true);
 
   const createUnit = useMutation({
-    mutationFn: () => api("/units", { method: "POST", body: unitFormBody(f) }),
+    mutationFn: async () => {
+      const u = await api<any>("/units", { method: "POST", body: unitFormBody(f) });
+      // Photos go up one by one after the unit exists; the first becomes the cover.
+      for (let i = 0; i < f.photos.length; i++) {
+        await uploadFile(`/units/${u.id}/photos`, f.photos[i], `foto-${i + 1}.jpg`).catch(() => null);
+      }
+      return u;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["units"] });
       qc.invalidateQueries({ queryKey: ["today"] });
@@ -78,29 +88,29 @@ export default function UnitsScreen() {
   const list = (
     <View style={s.root}>
       <TabHeader
-        title="Unit"
-        sub={counts && filter === "semua" ? `${counts.total} unit · ${counts.kosong} kosong` : null}
-        right={<Button title="Tambah" icon="plus" size="sm" onPress={openAdd} testID="add-unit-button" />}
+        title={t("Unit||tab")}
+        sub={counts && filter === "semua" ? t("{n} unit · {k} kosong", { n: counts.total, k: counts.kosong }) : null}
+        right={<Button title={t("Tambah")} icon="plus" size="sm" onPress={openAdd} testID="add-unit-button" />}
       />
 
       {isFree && plan ? (
         <PressableScale onPress={() => showUpgrade(plan.hidden_units > 0 ? "hidden_units" : "general")} testID="unit-usage">
           <RNText style={s.usage}>
             {plan.hidden_units > 0
-              ? `${plan.hidden_units} unit disembunyikan (paket Free) · Upgrade untuk menampilkan`
-              : `${plan.usage.units}/${plan.limits.max_units} unit · paket Free`}
+              ? t("{n} unit disembunyikan (paket Free) · Upgrade untuk menampilkan", { n: plan.hidden_units })
+              : t("{a}/{b} unit · paket Free", { a: plan.usage.units, b: plan.limits.max_units })}
           </RNText>
         </PressableScale>
       ) : null}
 
       <ChipRow testID="unit-filter-row">
         {STATUS_FILTERS.map((st) => (
-          <Chip key={st.key} label={st.label} active={filter === st.key} onPress={() => setFilter(st.key)} testID={`unit-filter-${st.key}`} />
+          <Chip key={st.key} label={t(st.label)} active={filter === st.key} onPress={() => setFilter(st.key)} testID={`unit-filter-${st.key}`} />
         ))}
       </ChipRow>
 
       {isLoading ? (
-        <Spinner label="Memuat unit…" />
+        <Spinner label={t("Memuat unit…")} />
       ) : error ? (
         <View style={{ padding: spacing.lg }}><ErrorBox message={(error as any)?.message} onRetry={refetch} /></View>
       ) : (
@@ -121,24 +131,27 @@ export default function UnitsScreen() {
                 <View>
                   <UnitThumb photo={item.photos?.[0]} height={wide ? 130 : 118} radiusSize={0} testID={`unit-thumb-${item.id}`} />
                   <View style={s.statusOverlay}>
-                    <StatusPill label={UNIT_STATUS[item.status] || item.status} tone={item.status === "kosong" ? "info" : item.status === "terisi" ? "success" : item.status === "reserved" ? "warning" : "neutral"} testID={`unit-status-${item.id}`} solid />
+                    <StatusPill label={availability(item).label} tone={availability(item).tone} testID={`unit-status-${item.id}`} solid />
                   </View>
                 </View>
                 <View style={s.unitBody}>
                   <RNText style={s.unitName} numberOfLines={1}>{item.name}</RNText>
                   <RNText style={s.unitSub} numberOfLines={1}>{unitKind(item) || "-"}</RNText>
+                  {item.residence ? <RNText style={s.unitSub} numberOfLines={1} testID={`unit-residence-${item.id}`}>{item.residence}</RNText> : null}
                   <View style={{ marginTop: 6 }}>
                     {hasPrice(item) ? <PriceTags unit={item} size="sm" testID={`unit-prices-${item.id}`} /> : <RNText style={s.noPrice}>{t("Belum ada harga")}</RNText>}
                   </View>
-                  <RNText style={s.vacant} numberOfLines={1}>
-                    {item.status === "kosong"
-                      ? `Kosong ${Math.max(daysFromNow(item.vacant_since) ?? 0, 0)} hari`
-                      : item.status === "reserved" && item.available_date
-                        ? `Available ${item.available_date}`
-                        : item.status === "terisi"
-                          ? "Ada tenant"
-                          : " "}
-                  </RNText>
+                  {item.furnishing ? <RNText style={s.vacant} numberOfLines={1}>{furnishingLabel(item.furnishing)}</RNText> : null}
+                  {facilities(item).length ? (
+                    <View style={s.facilities} testID={`unit-facilities-${item.id}`}>
+                      {facilities(item).map((f) => (
+                        <View key={f} style={s.facility}>
+                          <Icon name="check" size={11} color={colors.success} strokeWidth={2.8} />
+                          <RNText style={s.facilityText}>{f}</RNText>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
                 </View>
               </Card>
             </View>
@@ -147,12 +160,11 @@ export default function UnitsScreen() {
             empty ? (
               <EmptyState
                 art="units"
-                title={filter === "semua" ? "Belum ada unit" : "Tidak ada unit di status ini"}
-                subtitle="Tambah unit yang kamu pasarkan. SewAIn cocokkan dengan prospek yang masuk."
+                title={filter === "semua" ? t("Belum ada unit") : t("Tidak ada unit di status ini")}
+                subtitle={t("Tambah unit yang kamu pasarkan. SewAIn cocokkan dengan prospek yang masuk.")}
                 action={
                   <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-                    <Button title="Tambah Unit" icon="plus" onPress={openAdd} testID="empty-add-unit-button" />
-                    <Button title="Halaman Setup" variant="ghost" onPress={() => router.push("/setup")} testID="empty-setup-button" />
+                    <Button title={t("Tambah Unit")} icon="plus" onPress={openAdd} testID="empty-add-unit-button" />
                   </View>
                 }
               />
@@ -170,17 +182,20 @@ export default function UnitsScreen() {
         listWidth={520}
         detail={selected ? <UnitDetail key={selected} id={selected} embedded onGone={() => setSelected(null)} /> : null}
         emptyArt="units"
-        emptyText="Pilih unit untuk lihat detail, pemilik, dan tenant-nya."
+        emptyText={t("Pilih unit untuk lihat detail, pemilik, dan tenant-nya.")}
       />
       <Sheet visible={addOpen} onClose={() => setAddOpen(false)} title={t("Tambah Unit")} testID="add-unit-sheet" scroll>
         <View style={{ gap: spacing.lg }}>
-          <UnitForm value={f} onChange={setF} />
-          <Button title={t("Simpan Unit")} onPress={() => createUnit.mutate()} loading={createUnit.isPending} disabled={!unitFormValid(f)} testID="unit-save-button" />
+          <UnitForm value={f} onChange={setF} withPhotos />
+          {missing.length ? <RNText style={s.missing} testID="unit-missing">{t("Belum diisi: {fields}", { fields: missing.join(", ") })}</RNText> : null}
+          <Button title={t("Simpan Unit")} onPress={() => createUnit.mutate()} loading={createUnit.isPending} disabled={missing.length > 0} testID="unit-save-button" />
         </View>
       </Sheet>
     </>
   );
 }
+
+const facilities = (u: any): string[] => (u.facilities || []).filter((f: string) => FACILITIES.includes(f));
 
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
@@ -195,6 +210,10 @@ const useStyles = makeStyles((colors) => ({
   price: { color: colors.onSurface, ...fonts.bold, fontSize: 17, marginTop: 6 },
   perMonth: { color: colors.muted, ...fonts.regular, fontSize: 13 },
   vacant: { color: colors.muted, ...fonts.regular, fontSize: 13 },
+  facilities: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
+  facility: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.surface },
+  facilityText: { color: colors.onSurfaceSecondary, ...fonts.medium, fontSize: 12 },
+  missing: { color: colors.muted, ...fonts.regular, fontSize: 13.5, lineHeight: 19, textAlign: "center" },
   noPrice: { color: colors.muted, ...fonts.medium, fontSize: 13.5 },
   priceHint: { color: colors.muted, ...fonts.regular, fontSize: 13.5, lineHeight: 19, marginTop: -6 },
 }));

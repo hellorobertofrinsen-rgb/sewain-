@@ -6,7 +6,7 @@ import { fonts, radius, useTheme, withAlpha } from "@/src/theme";
 
 // A unit can be priced per month, per night and/or per year. Each kind always has
 // its own colour and suffix so they're never mixed up at a glance.
-//   /bulan → brand blue   /malam → teal   /tahun → violet
+//   /bulan → brand blue   /hari → teal   /tahun → violet
 
 const VIOLET = "#6D4AD6";
 
@@ -20,7 +20,7 @@ export function PriceTags({ unit, size = "md", testID }: { unit: Priced; size?: 
   const { colors } = useTheme();
   const tags = [
     unit.monthly_price ? { v: unit.monthly_price, suffix: t("/bulan"), color: colors.brandPrimary, key: "m" } : null,
-    unit.daily_price ? { v: unit.daily_price, suffix: t("/malam"), color: colors.info, key: "d" } : null,
+    unit.daily_price ? { v: unit.daily_price, suffix: t("/hari"), color: colors.info, key: "d" } : null,
     unit.yearly_price ? { v: unit.yearly_price, suffix: t("/tahun"), color: VIOLET, key: "y" } : null,
   ].filter(Boolean) as { v: number; suffix: string; color: string; key: string }[];
   if (!tags.length) return null;

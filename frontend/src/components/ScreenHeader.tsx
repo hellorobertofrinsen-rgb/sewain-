@@ -1,4 +1,5 @@
 import { PressableScale } from "@/src/components/ui";
+import { t } from "@/src/lib/i18n";
 import React from "react";
 import { Text as RNText, View } from "react-native";
 import { router } from "expo-router";
@@ -35,7 +36,7 @@ export function ScreenHeader({
           testID={backTestID || "back-button"}
           onPress={() => (onClose ? onClose() : router.canGoBack() ? router.back() : router.replace("/today"))}
           style={s.back}
-          accessibilityLabel={onClose ? "Tutup" : "Kembali"}
+          accessibilityLabel={onClose ? t("Tutup") : t("Kembali")}
         >
           <Icon name={onClose ? "x" : "chevron-left"} size={22} color={colors.onSurface} />
         </PressableScale>

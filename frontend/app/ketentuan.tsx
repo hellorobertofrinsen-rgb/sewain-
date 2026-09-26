@@ -1,5 +1,6 @@
 import React from "react";
 import { DocPage, DocSection } from "@/src/components/DocPage";
+import { getLang, t } from "@/src/lib/i18n";
 
 const SECTIONS: DocSection[] = [
   {
@@ -57,13 +58,70 @@ const SECTIONS: DocSection[] = [
   { h: "Kontak", p: ["WhatsApp +62 821-2223-2421."] },
 ];
 
+const SECTIONS_EN: DocSection[] = [
+  {
+    h: "The service",
+    p: [
+      "SewAIn is a web app for rental agents: it records prospects, units, tenants, viewings, contracts and bills. SewAIn is an admin tool; decisions and communication with renters and owners remain your responsibility.",
+    ],
+  },
+  {
+    h: "Your account",
+    p: [
+      "One account per person. Keep your password private. You're responsible for activity in your account and for the accuracy of the data you enter.",
+    ],
+  },
+  {
+    h: "Plans & payment",
+    p: [
+      [
+        "New accounts get Premium free for 14 days, with no credit card.",
+        "After that the account moves to the Free plan: your first 3 units stay visible, with 20 active prospects. Other units aren't deleted, just hidden until you upgrade.",
+        "Premium: Rp277,000 per month or Rp777,777 per 6 months, paid by bank transfer and confirmed on WhatsApp. There's no automatic renewal.",
+        "Confirmed payments can't be refunded, unless the service couldn't be used because of our error.",
+      ],
+    ],
+  },
+  {
+    h: "What's not allowed",
+    p: [
+      [
+        "Storing other people's data without a lawful basis, or for spam or fraud.",
+        "Trying to access accounts or data that belong to someone else.",
+        "Deliberately disrupting or overloading the service.",
+      ],
+      "We may suspend accounts that break these rules.",
+    ],
+  },
+  {
+    h: "Availability & liability",
+    p: [
+      "We work to keep SewAIn available and your data backed up every day, but the service is provided “as is”. As far as the law allows, we aren't liable for indirect losses, such as lost commission or profit, caused by service disruptions.",
+    ],
+  },
+  {
+    h: "Stopping",
+    p: [
+      "You can stop any time and delete your account and all its data from Settings. Download your data first if you still need it.",
+    ],
+  },
+  {
+    h: "Changes",
+    p: [
+      "These terms may change. We'll announce important changes in the app before they take effect. These terms are governed by the laws of the Republic of Indonesia.",
+    ],
+  },
+  { h: "Contact", p: ["WhatsApp +62 821-2223-2421."] },
+];
+
 export default function Ketentuan() {
+  const en = getLang() === "en";
   return (
     <DocPage
-      title="Ketentuan Layanan"
+      title={t("Ketentuan Layanan")}
       updated="26 September 2026"
-      intro="Dengan membuat akun atau memakai SewAIn, kamu setuju dengan ketentuan berikut."
-      sections={SECTIONS}
+      intro={en ? "By creating an account or using SewAIn, you agree to the following terms." : "Dengan membuat akun atau memakai SewAIn, kamu setuju dengan ketentuan berikut."}
+      sections={en ? SECTIONS_EN : SECTIONS}
       testID="terms-page"
     />
   );

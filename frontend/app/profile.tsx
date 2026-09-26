@@ -145,7 +145,7 @@ export default function ProfileScreen() {
           <RNText style={s.cardTitle}>{t("Rekening pribadi")}</RNText>
           <RNText style={s.cardSub}>{t("Opsional. Dipakai saat kirim invoice ke tenant.")}</RNText>
           <Field label={t("Bank")}>
-            <Input testID="profile-bank" value={f.bank_name} onChangeText={set("bank_name")} placeholder="BCA" />
+            <Input testID="profile-bank" value={f.bank_name} onChangeText={set("bank_name")} placeholder={t("BCA")} />
             {bankPicker("bank_name", "profile-bank")}
           </Field>
           <Field label={t("Nomor rekening")}>
@@ -160,7 +160,7 @@ export default function ProfileScreen() {
           <RNText style={s.cardTitle}>{t("Rekening kantor")}</RNText>
           <RNText style={s.cardSub}>{t("Opsional. Saat kirim invoice kamu bisa pilih rekening pribadi atau kantor.")}</RNText>
           <Field label={t("Bank")}>
-            <Input testID="profile-office-bank" value={f.office_bank_name} onChangeText={set("office_bank_name")} placeholder="Mandiri" />
+            <Input testID="profile-office-bank" value={f.office_bank_name} onChangeText={set("office_bank_name")} placeholder={t("Mandiri")} />
             {bankPicker("office_bank_name", "profile-office-bank")}
           </Field>
           <Field label={t("Nomor rekening")}>

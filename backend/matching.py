@@ -9,9 +9,16 @@ TYPES_BY_CATEGORY = {
     'apartemen': ['Studio', '1 Bedroom', '2 Bedroom', '3 Bedroom'],
     'rumah': ['1 Bedroom', '2 Bedroom', '3 Bedroom', '4 Bedroom'],
 }
+UNIT_SIZES = ('Studio', '1 Bedroom', '2 Bedroom', '3 Bedroom')  # what a unit can be (the add-unit form)
+FURNISHING = ('furnished', 'semi', 'unfurnished')
 RENT_TERMS = ('harian', 'bulanan', 'tahunan')
 TERM_PRICE = {'harian': 'daily_price', 'bulanan': 'monthly_price', 'tahunan': 'yearly_price'}
 TERM_LABEL = {'harian': 'Ada harga harian', 'bulanan': 'Ada harga bulanan', 'tahunan': 'Ada harga tahunan'}
+
+
+def pref_sizes(lead: dict) -> set[str]:
+    """'apartemen:Studio', 'rumah:2 Bedroom' -> {'Studio', '2 Bedroom'}."""
+    return {x.split(':', 1)[-1] for x in lead.get('pref_types') or []}
 
 
 def clean_prefs(category: str | None, types: list[str] | None, terms: list[str] | None) -> dict:
@@ -45,11 +52,12 @@ def _norm_type(s: str | None) -> str:
 def match_score(lead: dict, unit: dict, property_name: str = '', property_area: str = '') -> tuple[int, list[str]]:
     score, reasons = 0, []
     # Preferences picked in the prospect form.
+    # A unit matches a prospect looking for the same type (Studio, 1 Bedroom, …).
     ucat = unit.get('category')
-    if lead.get('pref_types') and ucat:
-        if f'{ucat}:{unit.get("unit_type")}' in lead['pref_types']:
+    if lead.get('pref_types'):
+        if unit.get('unit_type') in pref_sizes(lead):
             score += 40
-            reasons.append(f'{ucat.capitalize()} {unit.get("unit_type")}')
+            reasons.append(f'Tipe {unit.get("unit_type")}')
     elif lead.get('pref_category') and ucat and lead['pref_category'] in (ucat, 'keduanya'):
         score += 25
         reasons.append(ucat.capitalize())

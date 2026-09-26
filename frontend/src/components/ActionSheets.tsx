@@ -10,6 +10,7 @@ import { api } from "@/src/lib/api";
 import { dateLabel, leaseLeftLabel, rupiah, todayISO } from "@/src/lib/format";
 import { FollowupLead, followupMessage, leaseRenewalMessage, paymentReminderMessage, waLink } from "@/src/lib/messages";
 import { fonts, makeStyles, spacing } from "@/src/theme";
+import { t } from "@/src/lib/i18n";
 
 function invalidateWork(qc: ReturnType<typeof useQueryClient>) {
   for (const key of ["today", "leads", "lead", "tenants", "tenant", "plan"]) qc.invalidateQueries({ queryKey: [key] });
@@ -25,21 +26,21 @@ function MessageBox({ text, setText, phone, testID }: { text: string; setText: (
       <Textarea testID={`${testID}-input`} value={text} onChangeText={setText} style={{ minHeight: 130 }} />
       <View style={s.row}>
         {wa ? (
-          <Button title="Kirim via WhatsApp" icon="whatsapp" onPress={() => Linking.openURL(wa)} testID={`${testID}-whatsapp`} style={{ flex: 1 }} />
+          <Button title={t("Kirim via WhatsApp")} icon="whatsapp" onPress={() => Linking.openURL(wa)} testID={`${testID}-whatsapp`} style={{ flex: 1 }} />
         ) : null}
         <Button
-          title="Salin"
+          title={t("Salin")}
           variant="ghost"
           icon="copy"
           onPress={async () => {
             await Clipboard.setStringAsync(text);
-            toast("Pesan disalin. Tempel di WhatsApp ya.");
+            toast(t("Pesan disalin. Tempel di WhatsApp ya."));
           }}
           testID={`${testID}-copy`}
           style={wa ? undefined : { flex: 1 }}
         />
       </View>
-      {!phone ? <RNText style={s.note}>Belum ada nomor WhatsApp — salin pesannya, atau tambahkan nomor di detail.</RNText> : null}
+      {!phone ? <RNText style={s.note}>{t("Belum ada nomor WhatsApp — salin pesannya, atau tambahkan nomor di detail.")}</RNText> : null}
     </View>
   );
 }
@@ -57,7 +58,7 @@ export type FollowupTarget = FollowupLead & { id: string; phone?: string | null;
 
 export function FollowupSheet({ lead, onClose }: { lead: FollowupTarget | null; onClose: () => void }) {
   return (
-    <Sheet visible={!!lead} onClose={onClose} title={`Follow-up ${lead?.name || ""}`} testID="followup-sheet" scroll>
+    <Sheet visible={!!lead} onClose={onClose} title={t("Follow-up {name}", { name: lead?.name || "" })} testID="followup-sheet" scroll>
       {lead ? <FollowupBody key={lead.id} lead={lead} onClose={onClose} /> : null}
     </Sheet>
   );
@@ -81,10 +82,10 @@ function FollowupBody({ lead, onClose }: { lead: FollowupTarget; onClose: () => 
         body: { message: text, next_followup_date: nextDays ? todayISO(nextDays) : null },
       });
       invalidateWork(qc);
-      toast(`Follow-up ${lead.name} tercatat ✓`);
+      toast(t("Follow-up {name} tercatat ✓", { name: lead.name }));
       onClose();
     } catch (e: any) {
-      setError(e?.message || "Gagal. Coba lagi.");
+      setError(e?.message || t("Gagal. Coba lagi."));
     } finally {
       setSending(false);
     }
@@ -94,7 +95,7 @@ function FollowupBody({ lead, onClose }: { lead: FollowupTarget; onClose: () => 
       <View style={{ gap: spacing.lg }}>
         <MessageBox text={text} setText={setText} phone={lead.phone} testID="followup" />
         <View style={{ gap: spacing.sm }}>
-          <RNText style={s.label}>Ingatkan follow-up lagi</RNText>
+          <RNText style={s.label}>{t("Ingatkan follow-up lagi")}</RNText>
           <View style={s.wrap}>
             {NEXT_OPTIONS.map((o) => (
               <Chip key={o.days} label={o.label} active={nextDays === o.days} onPress={() => setNextDays(o.days)} testID={`followup-next-${o.days}`} />
@@ -102,7 +103,7 @@ function FollowupBody({ lead, onClose }: { lead: FollowupTarget; onClose: () => 
           </View>
         </View>
         {error ? <ErrorBox message={error} /> : null}
-        <Button title="Tandai Sudah Dihubungi" onPress={mark} loading={sending} testID="followup-mark-done-button" />
+        <Button title={t("Tandai Sudah Dihubungi")} onPress={mark} loading={sending} testID="followup-mark-done-button" />
       </View>
   );
 }
@@ -123,7 +124,7 @@ export type ReminderTarget = {
 
 export function ReminderSheet({ payment, onClose }: { payment: ReminderTarget | null; onClose: () => void }) {
   return (
-    <Sheet visible={!!payment} onClose={onClose} title={`Ingatkan ${payment?.name || ""}`} testID="reminder-sheet" scroll>
+    <Sheet visible={!!payment} onClose={onClose} title={t("Ingatkan {name}", { name: payment?.name || "" })} testID="reminder-sheet" scroll>
       {payment ? <ReminderBody key={payment.id} payment={payment} onClose={onClose} /> : null}
     </Sheet>
   );
@@ -142,10 +143,10 @@ function ReminderBody({ payment, onClose }: { payment: ReminderTarget; onClose: 
     try {
       await api(`/payments/${payment.id}/reminded`, { method: "POST" });
       invalidateWork(qc);
-      toast(`Pengingat untuk ${payment.name} tercatat`);
+      toast(t("Pengingat untuk {name} tercatat", { name: payment.name }));
       onClose();
     } catch (e: any) {
-      setError(e?.message || "Gagal. Coba lagi.");
+      setError(e?.message || t("Gagal. Coba lagi."));
     } finally {
       setSending(false);
     }
@@ -158,7 +159,7 @@ function ReminderBody({ payment, onClose }: { payment: ReminderTarget; onClose: 
         </RNText>
         <MessageBox text={text} setText={setText} phone={payment.phone} testID="reminder" />
         {error ? <ErrorBox message={error} /> : null}
-        <Button title="Tandai Sudah Diingatkan" onPress={mark} loading={sending} testID="reminder-mark-sent-button" />
+        <Button title={t("Tandai Sudah Diingatkan")} onPress={mark} loading={sending} testID="reminder-mark-sent-button" />
       </View>
   );
 }
@@ -171,7 +172,7 @@ const EXTEND_OPTIONS = [1, 3, 6, 12];
 
 export function LeaseSheet({ tenant, onClose }: { tenant: LeaseTarget | null; onClose: () => void }) {
   return (
-    <Sheet visible={!!tenant} onClose={onClose} title={`Kontrak ${tenant?.name || ""}`} testID="lease-sheet" scroll>
+    <Sheet visible={!!tenant} onClose={onClose} title={t("Kontrak {name}", { name: tenant?.name || "" })} testID="lease-sheet" scroll>
       {tenant ? <LeaseBody key={tenant.id} tenant={tenant} onClose={onClose} /> : null}
     </Sheet>
   );
@@ -191,10 +192,10 @@ function LeaseBody({ tenant, onClose }: { tenant: LeaseTarget; onClose: () => vo
     try {
       const r = await api<{ end_date: string; payments_created: number }>(`/tenants/${tenant.id}/extend`, { method: "POST", body: { months } });
       invalidateWork(qc);
-      toast(`Kontrak diperpanjang sampai ${dateLabel(r.end_date + "T00:00:00")} ✓`);
+      toast(t("Kontrak diperpanjang sampai {date} ✓", { date: dateLabel(r.end_date + "T00:00:00") }));
       onClose();
     } catch (e: any) {
-      setError(e?.message || "Gagal memperpanjang.");
+      setError(e?.message || t("Gagal memperpanjang."));
     } finally {
       setBusy(false);
     }
@@ -208,16 +209,16 @@ function LeaseBody({ tenant, onClose }: { tenant: LeaseTarget; onClose: () => vo
         </RNText>
         <MessageBox text={text} setText={setText} phone={tenant.phone} testID="lease" />
         <View style={{ gap: spacing.sm }}>
-          <RNText style={s.label}>Sudah setuju perpanjang?</RNText>
+          <RNText style={s.label}>{t("Sudah setuju perpanjang?")}</RNText>
           <View style={s.wrap}>
             {EXTEND_OPTIONS.map((m) => (
-              <Chip key={m} label={`${m} bulan`} active={months === m} onPress={() => setMonths(m)} testID={`extend-${m}`} />
+              <Chip key={m} label={t("{n} bulan", { n: m })} active={months === m} onPress={() => setMonths(m)} testID={`extend-${m}`} />
             ))}
           </View>
         </View>
         {error ? <ErrorBox message={error} /> : null}
-        <Button title={`Perpanjang ${months} Bulan`} onPress={extend} loading={busy} testID="lease-extend-button" />
-        <RNText style={s.note}>Tagihan bulanan untuk periode baru dibuat otomatis.</RNText>
+        <Button title={t("Perpanjang {n} Bulan", { n: months })} onPress={extend} loading={busy} testID="lease-extend-button" />
+        <RNText style={s.note}>{t("Tagihan bulanan untuk periode baru dibuat otomatis.")}</RNText>
       </View>
   );
 }

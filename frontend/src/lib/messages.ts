@@ -1,10 +1,11 @@
 // Ready-to-send WhatsApp messages, built from data SewAIn already has.
 // Plain templates (no AI call): instant, free, and the agent can still edit before sending.
 import { dateLabel, periodLabel, rupiah } from "./format";
-import { prefSummary, unitKind } from "./unitKinds";
+import { getLang, t } from "./i18n";
+import { FACILITIES, furnishingLabel, prefSummary, unitKind } from "./unitKinds";
 
 function firstName(name?: string | null) {
-  return (name || "").trim().split(/\s+/)[0] || "kak";
+  return (name || "").trim().split(/\s+/)[0] || t("kak");
 }
 
 type UnitInfo = { name: string; category?: string | null; unit_type?: string; monthly_price?: number; daily_price?: number | null; yearly_price?: number | null } | null | undefined;
@@ -22,46 +23,48 @@ export type FollowupLead = {
 export function followupMessage(lead: FollowupLead): string {
   const n = firstName(lead.name);
   const u = lead.unit;
-  const where = u ? `unit ${u.name}` : "";
+  const where = u ? t("unit {name}", { name: u.name }) : "";
   if (lead.status === "negotiation" && u) {
-    const price = lead.negotiation?.agreed_price ? ` dengan harga ${rupiah(lead.negotiation.agreed_price)}/bulan` : "";
-    const months = lead.negotiation?.contract_months ? ` untuk ${lead.negotiation.contract_months} bulan` : "";
-    return `Halo ${n}, mau lanjut soal ${where}${price}${months} ya. Kalau sudah oke, aku siapkan jadwal serah terima dan detail pembayarannya. Gimana, bisa kita lanjut minggu ini?`;
+    const price = lead.negotiation?.agreed_price ? t(" dengan harga {amount}/bulan", { amount: rupiah(lead.negotiation.agreed_price) }) : "";
+    const months = lead.negotiation?.contract_months ? t(" untuk {n} bulan", { n: lead.negotiation.contract_months }) : "";
+    return t("Halo {n}, mau lanjut soal {where}{price}{months} ya. Kalau sudah oke, aku siapkan jadwal serah terima dan detail pembayarannya. Gimana, bisa kita lanjut minggu ini?", { n, where, price, months });
   }
   if (lead.status === "viewing" && u) {
-    return `Halo ${n}, gimana kesannya setelah lihat ${where}? Kalau ada yang mau ditanyakan soal harga atau fasilitas, kabari aja ya 🙂`;
+    return t("Halo {n}, gimana kesannya setelah lihat {where}? Kalau ada yang mau ditanyakan soal harga atau fasilitas, kabari aja ya 🙂", { n, where });
   }
   if (u) {
-    const price = u.monthly_price ? `, harganya ${rupiah(u.monthly_price)}/bulan`
-      : u.daily_price ? `, harganya ${rupiah(u.daily_price)}/malam`
-      : u.yearly_price ? `, harganya ${rupiah(u.yearly_price)}/tahun` : "";
+    const price = u.monthly_price ? t(", harganya {amount}/bulan", { amount: rupiah(u.monthly_price) })
+      : u.daily_price ? t(", harganya {amount}/hari", { amount: rupiah(u.daily_price) })
+      : u.yearly_price ? t(", harganya {amount}/tahun", { amount: rupiah(u.yearly_price) }) : "";
     const kind = unitKind(u);
-    return `Halo ${n}, aku mau kabari lagi soal ${where}${kind ? ` (${kind})` : ""}${price}. Unitnya masih tersedia. Kalau masih cari, mau aku bantu jadwalkan lihat unitnya minggu ini?`;
+    return t("Halo {n}, aku mau kabari lagi soal {where}{kind}{price}. Unitnya masih tersedia. Kalau masih cari, mau aku bantu jadwalkan lihat unitnya minggu ini?", { n, where, kind: kind ? ` (${kind})` : "", price });
   }
   const want = prefSummary(lead);
-  return `Halo ${n}, aku mau follow-up soal hunian yang kamu cari${want ? ` (${want})` : ""}. Boleh info lagi lokasi, budget, dan kapan rencana pindahnya? Nanti aku carikan unit yang paling pas.`;
+  return t("Halo {n}, aku mau follow-up soal hunian yang kamu cari{want}. Boleh info lagi lokasi, budget, dan kapan rencana pindahnya? Nanti aku carikan unit yang paling pas.", { n, want: want ? ` (${want})` : "" });
 }
 
 export function paymentReminderMessage(p: { name: string; unit_name: string; amount: number; due_date: string; period?: string; months?: number; days_late?: number }): string {
   const n = firstName(p.name);
   const period = p.period ? ` ${periodLabel(p.period, p.months)}` : "";
   const late = (p.days_late ?? 0) > 0;
+  const vars = { n, unit: p.unit_name, period, amount: rupiah(p.amount), date: dateLabel(p.due_date + "T00:00:00") };
   return late
-    ? `Halo ${n}, mau mengingatkan sewa unit ${p.unit_name}${period} sebesar ${rupiah(p.amount)} sudah lewat jatuh tempo (${dateLabel(p.due_date + "T00:00:00")}). Mohon dibantu transfernya ya, dan kirim bukti transfer kalau sudah. Terima kasih 🙏`
-    : `Halo ${n}, sekadar mengingatkan sewa unit ${p.unit_name}${period} sebesar ${rupiah(p.amount)} jatuh tempo ${dateLabel(p.due_date + "T00:00:00")}. Kalau sudah transfer, boleh kirim buktinya ke sini ya. Terima kasih 🙏`;
+    ? t("Halo {n}, mau mengingatkan sewa unit {unit}{period} sebesar {amount} sudah lewat jatuh tempo ({date}). Mohon dibantu transfernya ya, dan kirim bukti transfer kalau sudah. Terima kasih 🙏", vars)
+    : t("Halo {n}, sekadar mengingatkan sewa unit {unit}{period} sebesar {amount} jatuh tempo {date}. Kalau sudah transfer, boleh kirim buktinya ke sini ya. Terima kasih 🙏", vars);
 }
 
-export function leaseRenewalMessage(t: { name: string; unit_name: string; end_date: string }): string {
-  return `Halo ${firstName(t.name)}, kontrak sewa unit ${t.unit_name} berakhir ${dateLabel(t.end_date + "T00:00:00")}. Mau diperpanjang? Kalau iya, saya siapkan perpanjangannya. Kalau tidak, kabari saya supaya jadwal serah terima kuncinya bisa diatur.`;
+export function leaseRenewalMessage(tn: { name: string; unit_name: string; end_date: string }): string {
+  return t("Halo {n}, kontrak sewa unit {unit} berakhir {date}. Mau diperpanjang? Kalau iya, saya siapkan perpanjangannya. Kalau tidak, kabari saya supaya jadwal serah terima kuncinya bisa diatur.", { n: firstName(tn.name), unit: tn.unit_name, date: dateLabel(tn.end_date + "T00:00:00") });
 }
 
-const DAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+const DAYS_ID = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+const DAYS_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 /** "Sabtu, 4 Oktober 2026" and "14.00" from an ISO datetime, in the device's time. */
 function whenParts(iso: string): { day: string; time: string } {
   const d = new Date(iso);
   const time = `${String(d.getHours()).padStart(2, "0")}.${String(d.getMinutes()).padStart(2, "0")}`;
-  return { day: `${DAYS[d.getDay()]}, ${dateLabel(iso)}`, time };
+  return { day: `${(getLang() === "en" ? DAYS_EN : DAYS_ID)[d.getDay()]}, ${dateLabel(iso)}`, time };
 }
 
 export function mapsLink(location?: string | null): string | null {
@@ -77,28 +80,28 @@ export function viewingInviteMessage(v: ViewingInfo): string {
   const { day, time } = whenParts(v.scheduled_at);
   if (v.units && v.units.length > 1) {
     return [
-      `Halo ${firstName(v.name)}, jadwal viewing ${v.units.length} unit:`,
-      `Hari: ${day}`,
-      `Jam: ${time}`,
+      t("Halo {n}, jadwal viewing {count} unit:", { n: firstName(v.name), count: v.units.length }),
+      t("Hari: {day}", { day }),
+      t("Jam: {time}", { time }),
       "",
       ...v.units.flatMap((u, i) => [
-        `${i + 1}. Unit ${u.name}`,
-        u.location ? `   Lokasi: ${u.location}` : null,
+        `${i + 1}. ${t("Unit {name}", { name: u.name })}`,
+        u.location ? `   ${t("Lokasi: {loc}", { loc: u.location })}` : null,
         mapsLink(u.location) ? `   Maps: ${mapsLink(u.location)}` : null,
       ]),
       "",
-      "Kalau ada perubahan jadwal, kabari saya ya.",
+      t("Kalau ada perubahan jadwal, kabari saya ya."),
     ].filter((x) => x !== null).join("\n");
   }
   const maps = mapsLink(v.location);
   return [
-    `Halo ${firstName(v.name)}, jadwal viewing unit ${v.unit_name}:`,
-    `Hari: ${day}`,
-    `Jam: ${time}`,
-    v.location ? `Lokasi: ${v.location}` : null,
+    t("Halo {n}, jadwal viewing unit {unit}:", { n: firstName(v.name), unit: v.unit_name }),
+    t("Hari: {day}", { day }),
+    t("Jam: {time}", { time }),
+    v.location ? t("Lokasi: {loc}", { loc: v.location }) : null,
     maps ? `Maps: ${maps}` : null,
     "",
-    "Kalau ada perubahan jadwal, kabari saya ya.",
+    t("Kalau ada perubahan jadwal, kabari saya ya."),
   ].filter((x) => x !== null).join("\n");
 }
 
@@ -131,11 +134,11 @@ export function todoCalendarLink(td: TodoInfo): string {
 export function todoInformMessage(td: TodoInfo): string {
   const { day, time } = whenParts(td.scheduled_at);
   return [
-    `Halo ${firstName(td.tenant_name)}, soal ${td.description.toLowerCase()}${td.unit_name ? ` di unit ${td.unit_name}` : ""} sudah saya jadwalkan:`,
-    `Hari: ${day}`,
-    `Jam: ${time}`,
+    t("Halo {n}, soal {what}{unit} sudah saya jadwalkan:", { n: firstName(td.tenant_name), what: td.description.toLowerCase(), unit: td.unit_name ? t(" di unit {name}", { name: td.unit_name }) : "" }),
+    t("Hari: {day}", { day }),
+    t("Jam: {time}", { time }),
     "",
-    "Kalau waktunya tidak cocok, kabari saya ya.",
+    t("Kalau waktunya tidak cocok, kabari saya ya."),
   ].join("\n");
 }
 
@@ -148,38 +151,41 @@ export function googleCalendarLink(v: ViewingInfo & { phone?: string | null }, m
     action: "TEMPLATE",
     text: `Viewing ${v.unit_name} - ${v.name}`,
     dates: `${fmt(start)}/${fmt(end)}`,
-    details: [`Prospek: ${v.name}`, v.phone ? `WhatsApp: ${v.phone}` : null].filter(Boolean).join("\n"),
+    details: [t("Prospek: {name}", { name: v.name }), v.phone ? `WhatsApp: ${v.phone}` : null].filter(Boolean).join("\n"),
     location: v.location || "",
   });
   return `https://calendar.google.com/calendar/render?${q.toString()}`;
 }
 
 export type ShareUnit = {
-  name: string; category?: string | null; unit_type?: string; location?: string | null; monthly_price?: number; deposit?: number;
+  name: string; category?: string | null; unit_type?: string; size_m2?: number | null; residence?: string | null; furnishing?: string | null; view?: string | null;
+  location?: string | null; monthly_price?: number; deposit?: number;
   daily_price?: number | null; yearly_price?: number | null;
   bedrooms?: number; bathrooms?: number; furnished?: boolean; facilities?: string[]; status?: string; available_date?: string | null;
 };
 
 export function unitShareMessage(u: ShareUnit): string {
   // Newer units say it in their type ("Rumah · 3 Bedroom"); older ones listed rooms separately.
-  const rooms = u.category ? "" : [u.bedrooms ? `${u.bedrooms} kamar tidur` : null, u.bathrooms ? `${u.bathrooms} kamar mandi` : null, u.furnished ? "furnished" : null]
+  const rooms = u.category ? "" : [u.bedrooms ? t("{n} kamar tidur", { n: u.bedrooms }) : null, u.bathrooms ? t("{n} kamar mandi", { n: u.bathrooms }) : null, u.furnished ? "furnished" : null]
     .filter(Boolean).join(", ");
   const kind = unitKind(u);
-  const status = u.status === "kosong" ? "Kosong, bisa langsung ditempati."
-    : u.status === "reserved" && u.available_date ? `Tersedia mulai ${dateLabel(u.available_date + "T00:00:00")}.`
-    : u.status === "terisi" ? "Saat ini masih terisi." : null;
+  const facilities = u.category || u.furnishing ? (u.facilities || []).filter((f) => FACILITIES.includes(f)) : u.facilities || [];
+  const status = u.status === "kosong" ? t("Kosong, bisa langsung ditempati.")
+    : u.status === "reserved" && u.available_date ? t("Tersedia mulai {date}.", { date: dateLabel(u.available_date + "T00:00:00") })
+    : u.status === "terisi" ? t("Saat ini masih terisi.") : null;
   return [
-    `Unit ${u.name}${kind ? ` (${kind})` : ""}`,
+    `${t("Unit {name}", { name: u.name })}${kind ? ` · ${kind}` : ""}`,
     u.location || null,
-    u.monthly_price ? `Sewa ${rupiah(u.monthly_price)}/bulan` : null,
-    u.yearly_price ? `Sewa ${rupiah(u.yearly_price)}/tahun` : null,
-    u.daily_price ? `Harian ${rupiah(u.daily_price)}/malam` : null,
-    u.deposit ? `Deposit ${rupiah(u.deposit)}` : null,
+    [furnishingLabel(u.furnishing), u.view].filter(Boolean).join(" · ") || null,
+    u.monthly_price ? t("Sewa {amount}/bulan", { amount: rupiah(u.monthly_price) }) : null,
+    u.yearly_price ? t("Sewa {amount}/tahun", { amount: rupiah(u.yearly_price) }) : null,
+    u.daily_price ? t("Harian {amount}/hari", { amount: rupiah(u.daily_price) }) : null,
+    u.deposit ? t("Deposit {amount}", { amount: rupiah(u.deposit) }) : null,
     rooms || null,
-    u.facilities?.length ? `Fasilitas: ${u.facilities.join(", ")}` : null,
+    facilities.length ? t("Fasilitas: {list}", { list: facilities.join(", ") }) : null,
     status,
     "",
-    "Mau lihat unitnya? Balas pesan ini, nanti saya atur jadwal viewing.",
+    t("Mau lihat unitnya? Balas pesan ini, nanti saya atur jadwal viewing."),
   ].filter((x) => x !== null).join("\n");
 }
 
@@ -192,16 +198,16 @@ export function invoiceMessage(
 ): string {
   const sign = [from?.name, from?.agency].filter(Boolean).join(" · ");
   return [
-    `Halo ${firstName(p.name)}, berikut tagihan sewa unit ${p.unit_name}:`,
-    p.period ? `Periode: ${periodLabel(p.period, p.months)}` : null,
-    `Jumlah: ${rupiah(p.amount)}`,
-    `Jatuh tempo: ${dateLabel(p.due_date + "T00:00:00")}`,
+    t("Halo {n}, berikut tagihan sewa unit {unit}:", { n: firstName(p.name), unit: p.unit_name }),
+    p.period ? t("Periode: {period}", { period: periodLabel(p.period, p.months) }) : null,
+    t("Jumlah: {amount}", { amount: rupiah(p.amount) }),
+    t("Jatuh tempo: {date}", { date: dateLabel(p.due_date + "T00:00:00") }),
     "",
-    "Transfer ke:",
+    t("Transfer ke:"),
     `${bank.bank} ${bank.account}`,
-    bank.holder ? `a.n. ${bank.holder}` : null,
+    bank.holder ? t("a.n. {name}", { name: bank.holder }) : null,
     "",
-    "Kalau sudah transfer, kirim buktinya di sini ya. Terima kasih.",
+    t("Kalau sudah transfer, kirim buktinya di sini ya. Terima kasih."),
     sign ? `\n${sign}` : null,
   ].filter((x) => x !== null).join("\n");
 }
@@ -213,12 +219,12 @@ export function waShareLink(text: string): string {
 
 export function ownerReportMessage(o: { name: string; units: number; terisi: number; kosong: number; paid: number; overdue: number }, days: number): string {
   const lines = [
-    `Halo ${o.name}, update unit ${days} hari terakhir:`,
-    `• ${o.units} unit: ${o.terisi} terisi, ${o.kosong} kosong`,
-    `• Sewa masuk: ${rupiah(o.paid)}`,
-    o.overdue > 0 ? `• Belum masuk (lewat jatuh tempo): ${rupiah(o.overdue)} — sedang saya tagih` : `• Tidak ada tunggakan`,
+    t("Halo {n}, update unit {days} hari terakhir:", { n: o.name, days }),
+    `• ${t("{units} unit: {a} terisi, {b} kosong", { units: o.units, a: o.terisi, b: o.kosong })}`,
+    `• ${t("Sewa masuk: {amount}", { amount: rupiah(o.paid) })}`,
+    o.overdue > 0 ? `• ${t("Belum masuk (lewat jatuh tempo): {amount} — sedang saya tagih", { amount: rupiah(o.overdue) })}` : `• ${t("Tidak ada tunggakan")}`,
     "",
-    "Kalau ada pertanyaan, kabari saya ya 🙏",
+    t("Kalau ada pertanyaan, kabari saya ya 🙏"),
   ];
   return lines.join("\n");
 }

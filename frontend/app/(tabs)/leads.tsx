@@ -51,7 +51,7 @@ export default function LeadsScreen() {
     .filter((l) => filter !== "hot" || l.interest === "high")
     .filter((l) => !needle || l.name?.toLowerCase().includes(needle) || (l.phone || "").replace(/\D/g, "").includes(needle.replace(/\D/g, "") || "~"));
   const hotCount = (data || []).filter((l) => l.interest === "high").length;
-  const sub = filter === "aktif" && data ? [`${data.length} aktif`, hotCount ? `${hotCount} hot buyer` : null].filter(Boolean).join(" · ") : null;
+  const sub = filter === "aktif" && data ? [t("{n} aktif", { n: data.length }), hotCount ? t("{n} hot buyer", { n: hotCount }) : null].filter(Boolean).join(" · ") : null;
 
   const open = (id: string) => {
     if (!wide) return router.push(`/lead/${id}` as any);
@@ -62,9 +62,9 @@ export default function LeadsScreen() {
   const list = (
     <View style={s.root}>
       <TabHeader
-        title="Prospek"
+        title={t("Prospek||tab")}
         sub={sub}
-        right={<Button title="Tambah" icon="plus" size="sm" onPress={addLead} testID="add-lead-button" />}
+        right={<Button title={t("Tambah")} icon="plus" size="sm" onPress={addLead} testID="add-lead-button" />}
       />
       {isFree && plan ? (
         <RNText style={s.usage}>
@@ -76,7 +76,7 @@ export default function LeadsScreen() {
           testID="lead-search-input"
           value={q}
           onChangeText={setQ}
-          placeholder="Cari nama atau nomor"
+          placeholder={t("Cari nama atau nomor")}
           autoCorrect={false}
           style={s.search}
           {...({ enterKeyHint: "search" } as any)}
@@ -84,12 +84,12 @@ export default function LeadsScreen() {
       </View>
       <ChipRow testID="lead-filter-row">
         {STATUS_FILTERS.map((st) => (
-          <Chip key={st.key} label={st.label} active={filter === st.key} onPress={() => setFilter(st.key)} testID={`lead-filter-${st.key}`} />
+          <Chip key={st.key} label={t(st.label)} active={filter === st.key} onPress={() => setFilter(st.key)} testID={`lead-filter-${st.key}`} />
         ))}
       </ChipRow>
 
       {isLoading ? (
-        <Spinner label="Memuat prospek…" />
+        <Spinner label={t("Memuat prospek…")} />
       ) : error ? (
         <View style={{ padding: spacing.lg }}><ErrorBox message={(error as any)?.message} onRetry={refetch} /></View>
       ) : (
@@ -108,13 +108,13 @@ export default function LeadsScreen() {
           )}
           ListEmptyComponent={
             needle ? (
-              <EmptyState art="leads" title={`Tidak ada “${q.trim()}”`} subtitle="Coba nama lain, atau cek filter di atas." />
+              <EmptyState art="leads" title={t("Tidak ada “{q}”", { q: q.trim() })} subtitle={t("Coba nama lain, atau cek filter di atas.")} />
             ) : (
               <EmptyState
                 art="leads"
-                title={filter === "aktif" ? "Belum ada prospek aktif" : "Tidak ada prospek di status ini"}
-                subtitle="Catat setiap orang yang tanya unit. SewAIn carikan unit yang cocok dan ingatkan kapan harus dibalas."
-                action={<Button title="Tambah Prospek" icon="plus" onPress={addLead} testID="empty-new-lead-button" />}
+                title={filter === "aktif" ? t("Belum ada prospek aktif") : t("Tidak ada prospek di status ini")}
+                subtitle={t("Catat setiap orang yang tanya unit. SewAIn carikan unit yang cocok dan ingatkan kapan harus dibalas.")}
+                action={<Button title={t("Tambah Prospek")} icon="plus" onPress={addLead} testID="empty-new-lead-button" />}
               />
             )
           }
@@ -128,7 +128,7 @@ export default function LeadsScreen() {
       list={list}
       detail={selected ? <LeadDetail key={`${selected}-${openSheet ?? ""}`} id={selected} open={openSheet} embedded onGone={() => setSelected(null)} /> : null}
       emptyArt="leads"
-      emptyText="Pilih prospek untuk lihat detail dan langkah berikutnya."
+      emptyText={t("Pilih prospek untuk lihat detail dan langkah berikutnya.")}
     />
   );
 }
@@ -185,7 +185,7 @@ function LeadCard({ item, selected, onPress, onOpenUnit, onSchedule }: { item: a
         {wa && !closed ? (
           <PressableScale
             testID={`lead-wa-${item.id}`}
-            accessibilityLabel={`WhatsApp ${item.name}`}
+            accessibilityLabel={t("WhatsApp {name}", { name: item.name })}
             onPress={() => Linking.openURL(wa)}
             style={s.waBtn}
           >
@@ -200,7 +200,7 @@ function LeadCard({ item, selected, onPress, onOpenUnit, onSchedule }: { item: a
               <CardViewingActions lead={item} />
             </View>
           ) : (
-            <Button title="Jadwalkan Viewing" icon="calendar-check" size="sm" variant="secondary" onPress={onSchedule} testID={`lead-schedule-${item.id}`} />
+            <Button title={t("Jadwalkan Viewing")} icon="calendar-check" size="sm" variant="secondary" onPress={onSchedule} testID={`lead-schedule-${item.id}`} />
           )}
         </View>
       ) : null}

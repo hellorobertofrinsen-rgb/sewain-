@@ -1,11 +1,14 @@
 import React, { createContext, useCallback, useContext, useState } from "react";
 import { View } from "react-native";
-import { EN } from "./i18n.en";
+import { EN, EN_PATTERNS } from "./i18n.en";
 
 // Two languages. Indonesian is the source text; English lives in i18n.en.ts keyed by
 // the Indonesian string, so t("Tambah Unit") reads naturally in the code and falls
 // back to Indonesian if a translation is missing.
 //   t("{n} prospek aktif", { n: 3 })
+// A key may carry a context after "||" when one Indonesian word needs two English
+// ones: t("Unit||tab") shows "Unit" in Indonesian and "Units" in English.
+// English singulars: when vars.n is 1, "<key>||one" is used if it exists.
 
 export type Lang = "id" | "en";
 const LANG_KEY = "sewain_lang";
@@ -26,8 +29,16 @@ export function getLang(): Lang {
   return current;
 }
 
+function english(id: string, n?: unknown): string {
+  if (n === 1 && EN[id + "||one"] !== undefined) return EN[id + "||one"];
+  const hit = EN[id];
+  if (hit !== undefined) return hit;
+  for (const [rx, out] of EN_PATTERNS) if (rx.test(id)) return id.replace(rx, out);
+  return id.split("||")[0];
+}
+
 export function t(id: string, vars?: Record<string, string | number | null | undefined>): string {
-  const s = current === "en" ? (EN[id] ?? id) : id;
+  const s = current === "en" ? english(id, vars?.n) : id.split("||")[0];
   return vars ? s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? "")) : s;
 }
 

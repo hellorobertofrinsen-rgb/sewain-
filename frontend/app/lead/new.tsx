@@ -47,18 +47,18 @@ export default function NewLead() {
     mutationFn: () => api<any>("/leads", { method: "POST", body: formToBody(f) }),
     onSuccess: (lead) => {
       for (const key of ["leads", "today", "plan", "stats"]) qc.invalidateQueries({ queryKey: [key] });
-      toast(lead.matched_unit ? `Tersimpan — cocok dengan unit ${lead.matched_unit.name}` : "Prospek tersimpan ✓");
+      toast(lead.matched_unit ? t("Tersimpan — cocok dengan unit {name}", { name: lead.matched_unit.name }) : t("Prospek tersimpan ✓"));
       router.replace(`/lead/${lead.id}` as any);
     },
     onError: (e: any) => {
-      if (!e?.code) toast(e?.message || "Gagal menyimpan", "error");
+      if (!e?.code) toast(e?.message || t("Gagal menyimpan"), "error");
     },
   });
 
   const applyPaste = () => {
     const { form, found } = fillFrom(f, paste);
     setF(form);
-    toast(found ? `${found} isian terisi dari chat — cek lagi ya` : "Tidak ada data yang dikenali. Isi manual saja.", found ? "ok" : "info");
+    toast(found ? t("{n} isian terisi dari chat — cek lagi ya", { n: found }) : t("Tidak ada data yang dikenali. Isi manual saja."), found ? "ok" : "info");
     if (found) setPasteOpen(false);
   };
 
@@ -69,23 +69,23 @@ export default function NewLead() {
         {shared ? (
           <Card style={s.sharedCard} testID="shared-banner">
             <IconCircle icon="whatsapp" tone="success" size={40} />
-            <RNText style={s.sharedText}>Diisi dari chat yang kamu bagikan. Cek lagi sebelum simpan.</RNText>
+            <RNText style={s.sharedText}>{t("Diisi dari chat yang kamu bagikan. Cek lagi sebelum simpan.")}</RNText>
           </Card>
         ) : pasteOpen ? (
           <Card style={{ gap: spacing.md }} testID="paste-card">
-            <RNText style={s.pasteTitle}>Tempel chat WhatsApp</RNText>
-            <RNText style={s.intro}>Salin beberapa pesan dari chat prospek, tempel di sini. SewAIn ambil nama dan nomornya.</RNText>
-            <Textarea testID="paste-chat-input" value={paste} onChangeText={setPaste} placeholder="[26/09 10.21] Jessica: Halo kak, ada studio di PIK 2? Budget 3,5 jt…" />
+            <RNText style={s.pasteTitle}>{t("Tempel chat WhatsApp")}</RNText>
+            <RNText style={s.intro}>{t("Salin beberapa pesan dari chat prospek, tempel di sini. SewAIn ambil nama dan nomornya.")}</RNText>
+            <Textarea testID="paste-chat-input" value={paste} onChangeText={setPaste} placeholder={t("[26/09 10.21] Jessica: Halo kak, ada studio di PIK 2? Budget 3,5 jt…")} />
             <View style={{ flexDirection: "row", gap: spacing.sm }}>
-              <Button title="Isi otomatis" icon="zap" onPress={applyPaste} disabled={!paste.trim()} testID="paste-apply-button" style={{ flex: 1 }} />
-              <Button title="Batal" variant="ghost" onPress={() => setPasteOpen(false)} testID="paste-cancel-button" />
+              <Button title={t("Isi otomatis")} icon="zap" onPress={applyPaste} disabled={!paste.trim()} testID="paste-apply-button" style={{ flex: 1 }} />
+              <Button title={t("Batal")} variant="ghost" onPress={() => setPasteOpen(false)} testID="paste-cancel-button" />
             </View>
           </Card>
         ) : (
-          <Button title="Tempel chat WhatsApp" icon="clipboard" variant="secondary" onPress={() => setPasteOpen(true)} testID="paste-open-button" />
+          <Button title={t("Tempel chat WhatsApp")} icon="clipboard" variant="secondary" onPress={() => setPasteOpen(true)} testID="paste-open-button" />
         )}
         <LeadForm value={f} onChange={setF} />
-        <Button title="Simpan Prospek" size="lg" onPress={() => save.mutate()} loading={save.isPending} disabled={!leadFormValid(f)} testID="lead-save-button" />
+        <Button title={t("Simpan Prospek")} size="lg" onPress={() => save.mutate()} loading={save.isPending} disabled={!leadFormValid(f)} testID="lead-save-button" />
         {isFree && plan ? (
           <RNText style={s.usage}>
             {plan.usage.active_leads}/{plan.limits.max_active_leads} prospek aktif di paket Free

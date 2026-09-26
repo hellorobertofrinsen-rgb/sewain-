@@ -16,6 +16,7 @@ import { cardShadow, fonts, makeStyles, radius, spacing, useTheme, withAlpha } f
 import { CSS_EASE_OUT, DURATION, PRESS_SCALE, PRESS_SCALE_SOFT, STATE_TRANSITION } from "@/src/motion";
 import { Icon, IconName } from "./Icon";
 import { Illustration, IllustrationName } from "./Illustration";
+import { t } from "@/src/lib/i18n";
 
 // ------------------------------ PressableScale ---------------------------------
 // Every tappable thing in the app. Feedback lands on press-in (finger down), not on
@@ -218,6 +219,7 @@ export function Chip({
       onPress={onPress}
       role={check ? "checkbox" : "button"}
       accessibilityState={check ? { checked: active } : { selected: active }}
+      {...((check ? { "aria-checked": active } : { "aria-pressed": active }) as any)}
       style={[STATE_TRANSITION, s.chip, check && s.chipCheck, active && (check ? s.chipCheckOn : s.chipActive)]}
     >
       {check ? (
@@ -351,10 +353,10 @@ export function ListRow({
 
 export function IconCircle({ icon, tone = "brand", size = 40 }: { icon: IconName; tone?: Tone; size?: number }) {
   const { colors } = useTheme();
-  const t = toneColors(colors, tone);
+  const tc = toneColors(colors, tone);
   return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: t.bg, alignItems: "center", justifyContent: "center" }}>
-      <Icon name={icon} size={Math.round(size * 0.48)} color={t.fg} />
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: tc.bg, alignItems: "center", justifyContent: "center" }}>
+      <Icon name={icon} size={Math.round(size * 0.48)} color={tc.fg} />
     </View>
   );
 }
@@ -383,10 +385,10 @@ export function toneColors(colors: ReturnType<typeof useTheme>["colors"], tone: 
 /** `solid`: white backing for use on top of photos, where a soft tint would vanish. */
 export function StatusPill({ label, tone = "neutral", testID, solid }: { label: string; tone?: Tone; testID?: string; solid?: boolean }) {
   const { colors } = useTheme();
-  const t = toneColors(colors, tone);
+  const tc = toneColors(colors, tone);
   return (
-    <View testID={testID} style={[{ backgroundColor: solid ? "rgba(255,255,255,0.95)" : t.bg, borderRadius: radius.pill, paddingHorizontal: 11, paddingVertical: 5, alignSelf: "flex-start" }, solid && cardShadow]}>
-      <RNText style={{ color: t.fg, fontSize: 12.5, ...fonts.semibold }}>{label}</RNText>
+    <View testID={testID} style={[{ backgroundColor: solid ? "rgba(255,255,255,0.95)" : tc.bg, borderRadius: radius.pill, paddingHorizontal: 11, paddingVertical: 5, alignSelf: "flex-start", maxWidth: "100%" }, solid && cardShadow]}>
+      <RNText style={{ color: tc.fg, fontSize: 12.5, ...fonts.semibold }} numberOfLines={1}>{label}</RNText>
     </View>
   );
 }
@@ -450,7 +452,7 @@ export function ErrorBox({ message, onRetry }: { message: string; onRetry?: () =
       <Icon name="alert" size={18} color={s.errorText.color as string} />
       <RNText style={s.errorText}>{message}</RNText>
       {onRetry ? (
-        <Button title="Coba lagi" variant="ghost" size="sm" onPress={onRetry} testID="error-retry-button" />
+        <Button title={t("Coba lagi")} variant="ghost" size="sm" onPress={onRetry} testID="error-retry-button" />
       ) : null}
     </View>
   );

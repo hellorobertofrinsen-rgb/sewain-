@@ -61,7 +61,7 @@ const FOCUS: Record<Exclude<Focus, null>, { title: string; types: string[] }> = 
   followup: { title: "Follow-up terjadwal", types: ["followup"] },
   viewing: { title: "Viewing", types: ["viewing", "viewing_result"] },
   payment: { title: "Jatuh tempo", types: ["payment"] },
-  lease: { title: "Kontrak habis dalam 30 hari", types: ["lease"] },
+  lease: { title: "Kontrak selesai dalam 30 hari", types: ["lease"] },
 };
 
 const QUEUE_ICON: Record<string, { icon: IconName; tone: Tone }> = {
@@ -101,9 +101,9 @@ export default function TodayScreen() {
     mutationFn: fn,
     onSuccess: () => {
       invalidateAll();
-      if (ok) toast(ok);
+      if (ok) toast(t(ok));
     },
-    onError: (e: any) => toast(e?.message || "Gagal. Coba lagi.", "error"),
+    onError: (e: any) => toast(e?.message || t("Gagal. Coba lagi."), "error"),
   });
 
   const confirmViewing = useMutation(act((id: string) => api(`/viewings/${id}/confirm`, { method: "POST" }), "Viewing dikonfirmasi"));
@@ -126,7 +126,7 @@ export default function TodayScreen() {
       setFocus(null);
       router.push(`/lead/${item.lead_id}?open=negotiation` as any);
     } catch (e: any) {
-      toast(e?.message || "Gagal. Coba lagi.", "error");
+      toast(e?.message || t("Gagal. Coba lagi."), "error");
     }
   };
   // Opening an action sheet closes the list first (one sheet at a time).
@@ -135,16 +135,16 @@ export default function TodayScreen() {
     fn();
   };
 
-  if (isLoading) return <Spinner label="Menyiapkan hari ini…" />;
-  if (error || !data) return <View style={s.page}><ErrorBox message={(error as any)?.message || "Gagal memuat."} onRetry={refetch} /></View>;
+  if (isLoading) return <Spinner label={t("Menyiapkan hari ini…")} />;
+  if (error || !data) return <View style={s.page}><ErrorBox message={(error as any)?.message || t("Gagal memuat.")} onRetry={refetch} /></View>;
 
   const { counts, items } = data;
   const money = rupiah(counts.unpaid_amount);
   const statCards: { v: string; l: string; testID: string; icon: IconName; tone: Tone; onPress: () => void }[] = [
-    { v: `${counts.active_leads}`, l: "Prospek", testID: "stat-leads", icon: "person", tone: "brand", onPress: () => router.push("/leads" as any) },
-    { v: `${counts.viewings}`, l: "Viewing", testID: "stat-viewings", icon: "calendar-check", tone: "info", onPress: () => (counts.viewings ? setFocus("viewing") : router.push("/leads" as any)) },
-    { v: money, l: counts.unpaid_count ? `Jatuh tempo · ${counts.unpaid_count} tagihan` : "Jatuh tempo", testID: "stat-unpaid", icon: "wallet", tone: "error", onPress: () => (counts.unpaid_count ? setFocus("payment") : router.push("/tenants" as any)) },
-    { v: `${counts.leases}`, l: "Kontrak habis dalam 30 hari", testID: "stat-leases", icon: "key", tone: "warning", onPress: () => (counts.leases ? setFocus("lease") : router.push("/tenants" as any)) },
+    { v: `${counts.active_leads}`, l: "Prospek||tab", testID: "stat-leads", icon: "person", tone: "brand", onPress: () => router.push("/leads" as any) },
+    { v: `${counts.viewings}`, l: "Viewing||tab", testID: "stat-viewings", icon: "calendar-check", tone: "info", onPress: () => (counts.viewings ? setFocus("viewing") : router.push("/leads" as any)) },
+    { v: money, l: counts.unpaid_count ? t("Jatuh tempo · {n} tagihan", { n: counts.unpaid_count }) : t("Jatuh tempo"), testID: "stat-unpaid", icon: "wallet", tone: "error", onPress: () => (counts.unpaid_count ? setFocus("payment") : router.push("/tenants" as any)) },
+    { v: `${counts.leases}`, l: "Kontrak selesai dalam 30 hari", testID: "stat-leases", icon: "key", tone: "warning", onPress: () => (counts.leases ? setFocus("lease") : router.push("/tenants" as any)) },
   ];
 
   const focusItems = focus ? items.filter((i) => FOCUS[focus].types.includes(i.type)) : [];
@@ -193,7 +193,7 @@ export default function TodayScreen() {
                       <Icon name="chevron-right" size={16} color={colors.borderStrong} />
                     </View>
                     <RNText style={[s.statValue, c.v.length > 8 && s.statValueLong]} numberOfLines={1}>{c.v}</RNText>
-                    <RNText style={s.statLabel}>{c.l}</RNText>
+                    <RNText style={s.statLabel}>{t(c.l)}</RNText>
                   </PressableScale>
                 ))}
               </View>
@@ -224,7 +224,7 @@ export default function TodayScreen() {
         </View>
       </ScrollView>
 
-      <Sheet visible={!!focus} onClose={() => setFocus(null)} title={focus ? FOCUS[focus].title : ""} testID="focus-sheet" scroll>
+      <Sheet visible={!!focus} onClose={() => setFocus(null)} title={focus ? t(FOCUS[focus].title) : ""} testID="focus-sheet" scroll>
         <View style={{ gap: spacing.md }}>
           {focusItems.map((item) => (
             <Animated.View key={`${item.type}-${item.id}`} exiting={ITEM_EXIT} layout={ITEM_REFLOW}>
@@ -250,7 +250,7 @@ export default function TodayScreen() {
           {focus && focusItems.length === 0 ? (
             <Animated.View entering={ALL_DONE} style={s.done} testID="focus-all-done">
               <Illustration name="done" width={170} />
-              <RNText style={s.doneTitle}>Beres semua. Mantap!</RNText>
+              <RNText style={s.doneTitle}>{t("Beres semua. Mantap!")}</RNText>
             </Animated.View>
           ) : null}
         </View>
@@ -259,21 +259,21 @@ export default function TodayScreen() {
       <FollowupSheet lead={followupLead} onClose={() => setFollowupLead(null)} />
       <ReminderSheet payment={remindPayment} onClose={() => setRemindPayment(null)} />
       <LeaseSheet tenant={lease} onClose={() => setLease(null)} />
-      <Sheet visible={!!reschedule} onClose={() => setReschedule(null)} title={`Ganti jadwal viewing ${reschedule?.name || ""}`} testID="reschedule-sheet">
+      <Sheet visible={!!reschedule} onClose={() => setReschedule(null)} title={t("Ganti jadwal viewing {name}", { name: reschedule?.name || "" })} testID="reschedule-sheet">
         <View style={{ gap: spacing.md }}>
           <View style={{ flexDirection: "row", gap: spacing.md }}>
             <View style={{ flex: 1 }}>
-              <Field label="Tanggal">
+              <Field label={t("Tanggal")}>
                 <DateInput testID="reschedule-date-input" value={reschedDate} onChange={setReschedDate} />
               </Field>
             </View>
             <View style={{ flex: 1 }}>
-              <Field label="Jam">
+              <Field label={t("Jam")}>
                 <DateInput mode="time" testID="reschedule-time-input" value={reschedTime} onChange={setReschedTime} />
               </Field>
             </View>
           </View>
-          <Button title="Simpan Jadwal" onPress={() => reschedMutation.mutate({ id: reschedule.viewing_id, date: reschedDate, time: reschedTime })} loading={reschedMutation.isPending} testID="reschedule-save-button" />
+          <Button title={t("Simpan Jadwal")} onPress={() => reschedMutation.mutate({ id: reschedule.viewing_id, date: reschedDate, time: reschedTime })} loading={reschedMutation.isPending} testID="reschedule-save-button" />
         </View>
       </Sheet>
     </View>
@@ -307,11 +307,11 @@ function QueueCard({
       <Card testID={`queue-followup-${item.id}`} style={s.sheetCard}>
         {head(item.name, prefSummary(item) || t("Prospek"),
           item.hot ? <StatusPill label={t("Hot Buyer")} tone="error" /> : undefined)}
-        <RNText style={s.reason}>{item.reason}</RNText>
+        <RNText style={s.reason}>{t(item.reason)}</RNText>
         {item.note ? <RNText style={s.note} numberOfLines={2}>{item.note}</RNText> : null}
         <View style={s.actions}>
-          <Button title="Follow-up" size="sm" icon="whatsapp" onPress={onFollowup} testID={`followup-open-${item.id}`} />
-          <Button title="Detail" variant="ghost" size="sm" onPress={() => onDetail(`/lead/${item.lead_id}`)} testID={`followup-detail-${item.id}`} />
+          <Button title={t("Follow-up")} size="sm" icon="whatsapp" onPress={onFollowup} testID={`followup-open-${item.id}`} />
+          <Button title={t("Detail")} variant="ghost" size="sm" onPress={() => onDetail(`/lead/${item.lead_id}`)} testID={`followup-detail-${item.id}`} />
         </View>
       </Card>
     );
@@ -319,8 +319,8 @@ function QueueCard({
   if (item.type === "viewing") {
     return (
       <Card testID={`queue-viewing-${item.id}`} style={s.sheetCard}>
-        {head(`Viewing ${item.name}`, `Unit ${item.unit_name} · ${dateTimeLabel(item.scheduled_at)}`,
-          <StatusPill label={item.status === "menunggu" ? "Belum dikonfirmasi" : "Terjadwal"} tone={item.status === "menunggu" ? "warning" : "info"} testID={`pill-viewing-${item.id}`} />)}
+        {head(t("Viewing {name}", { name: item.name }), `${t("Unit {name}", { name: item.unit_name })} · ${dateTimeLabel(item.scheduled_at)}`,
+          <StatusPill label={item.status === "menunggu" ? t("Belum dikonfirmasi") : t("Terjadwal")} tone={item.status === "menunggu" ? "warning" : "info"} testID={`pill-viewing-${item.id}`} />)}
         <View style={{ marginTop: spacing.md }}>
           <CalendarActions
             added={!!item.calendar_added}
@@ -343,10 +343,10 @@ function QueueCard({
   if (item.type === "viewing_result") {
     return (
       <Card testID={`queue-viewing-result-${item.id}`} style={s.sheetCard}>
-        {head(`Hasil viewing ${item.name}?`, `Unit ${item.unit_name} · ${dateTimeLabel(item.scheduled_at)}`)}
+        {head(t("Hasil viewing {name}?", { name: item.name }), `${t("Unit {name}", { name: item.unit_name })} · ${dateTimeLabel(item.scheduled_at)}`)}
         <View style={s.actions}>
-          <Button title="Lanjut Negosiasi" size="sm" onPress={onNego} testID={`viewing-nego-${item.id}`} />
-          <Button title="Belum cocok" variant="ghost" size="sm" onPress={onNotYet} testID={`viewing-notyet-${item.id}`} />
+          <Button title={t("Lanjut Negosiasi")} size="sm" onPress={onNego} testID={`viewing-nego-${item.id}`} />
+          <Button title={t("Belum cocok")} variant="ghost" size="sm" onPress={onNotYet} testID={`viewing-notyet-${item.id}`} />
         </View>
       </Card>
     );
@@ -354,11 +354,11 @@ function QueueCard({
   if (item.type === "payment") {
     return (
       <Card testID={`queue-payment-${item.id}`} style={s.sheetCard}>
-        {head(`${item.name} · ${item.unit_name}`, `${rupiah(item.amount)}${item.months > 1 ? ` (${item.months} bulan)` : ""} · tempo ${shortDay(item.due_date + "T00:00:00")}`,
-          <StatusPill label={item.days_late > 0 ? `Telat ${item.days_late} hari` : "Belum bayar"} tone="error" testID={`pill-payment-${item.id}`} />)}
+        {head(`${item.name} · ${item.unit_name}`, `${rupiah(item.amount)}${item.months > 1 ? ` (${t("{n} bulan", { n: item.months })})` : ""} · ${t("tempo {date}", { date: shortDay(item.due_date + "T00:00:00") })}`,
+          <StatusPill label={item.days_late > 0 ? t("Telat {n} hari", { n: item.days_late }) : t("Belum bayar")} tone="error" testID={`pill-payment-${item.id}`} />)}
         <View style={s.actions}>
-          <Button title="Tandai Lunas" size="sm" onPress={onPaid} testID={`payment-paid-${item.id}`} />
-          <Button title="Ingatkan" variant="ghost" size="sm" icon="whatsapp" onPress={onRemind} testID={`payment-remind-${item.id}`} />
+          <Button title={t("Tandai Lunas")} size="sm" onPress={onPaid} testID={`payment-paid-${item.id}`} />
+          <Button title={t("Ingatkan")} variant="ghost" size="sm" icon="whatsapp" onPress={onRemind} testID={`payment-remind-${item.id}`} />
         </View>
       </Card>
     );
@@ -366,11 +366,11 @@ function QueueCard({
   if (item.type === "lease") {
     return (
       <Card testID={`queue-lease-${item.id}`} style={s.sheetCard}>
-        {head(`${item.name} · ${item.unit_name}`, `Kontrak sampai ${shortDay(item.end_date + "T00:00:00")}`,
+        {head(`${item.name} · ${item.unit_name}`, t("Kontrak sampai {date}", { date: shortDay(item.end_date + "T00:00:00") }),
           <StatusPill label={leaseLeftLabel(item.days_left)} tone={item.days_left <= 7 ? "error" : "warning"} testID={`pill-lease-${item.id}`} />)}
         <View style={s.actions}>
-          <Button title="Perpanjang / Kabari" size="sm" onPress={onLease} testID={`lease-open-${item.id}`} />
-          <Button title="Detail" variant="ghost" size="sm" onPress={() => onDetail(`/tenant/${item.tenant_id}`)} testID={`lease-detail-${item.id}`} />
+          <Button title={t("Perpanjang / Kabari")} size="sm" onPress={onLease} testID={`lease-open-${item.id}`} />
+          <Button title={t("Detail")} variant="ghost" size="sm" onPress={() => onDetail(`/tenant/${item.tenant_id}`)} testID={`lease-detail-${item.id}`} />
         </View>
       </Card>
     );
@@ -388,7 +388,7 @@ function Section({ title, to, testID, children }: { title: string; to: string; t
       <PressableScale role="link" onPress={() => router.push(to as any)} style={s.sectionHead} testID={`${testID}-all`}>
         <RNText style={s.sectionTitle}>{title}</RNText>
         <View style={s.seeAll}>
-          <RNText style={s.seeAllText}>Lihat semua</RNText>
+          <RNText style={s.seeAllText}>{t("Lihat semua")}</RNText>
           <Icon name="chevron-right" size={16} color={colors.brandPrimary} />
         </View>
       </PressableScale>
@@ -424,8 +424,8 @@ function UnitPreview({ units }: { units?: any[] }) {
     .sort((a, b) => Number(b.status === "kosong") - Number(a.status === "kosong") || (daysFromNow(b.vacant_since) ?? 0) - (daysFromNow(a.vacant_since) ?? 0))
     .slice(0, 3);
   return (
-    <Section title="Unit" to="/units" testID="preview-units">
-      {rows.length === 0 ? <Empty text="Belum ada unit." /> : null}
+    <Section title={t("Unit||tab")} to="/units" testID="preview-units">
+      {rows.length === 0 ? <Empty text={t("Belum ada unit.")} /> : null}
       {rows.map((u, i) => (
         <PreviewRow
           key={u.id}
@@ -434,7 +434,7 @@ function UnitPreview({ units }: { units?: any[] }) {
           onPress={() => router.push(`/unit/${u.id}` as any)}
           left={<UnitThumb photo={u.photos?.[0]} width={48} height={48} radiusSize={12} />}
           title={u.name}
-          sub={[mainPrice(u, { m: t("/bulan"), d: t("/malam"), y: t("/tahun") }) || t("Belum ada harga"), unitKind(u)].filter(Boolean).join(" · ")}
+          sub={[mainPrice(u, { m: t("/bulan"), d: t("/hari"), y: t("/tahun") }) || t("Belum ada harga"), unitKind(u)].filter(Boolean).join(" · ")}
           right={<StatusPill label={UNIT_STATUS[u.status] || u.status} tone={u.status === "kosong" ? "info" : u.status === "terisi" ? "success" : u.status === "reserved" ? "warning" : "neutral"} />}
         />
       ))}
@@ -448,8 +448,8 @@ function LeadPreview({ leads }: { leads?: any[] }) {
     l.next_followup_date && l.next_followup_date <= todayISO() ? 0 : l.next_viewing_at ? 1 : l.interest === "high" ? 2 : 3;
   const rows = [...(leads || [])].sort((a, b) => rank(a) - rank(b)).slice(0, 3);
   return (
-    <Section title="Prospek" to="/leads" testID="preview-leads">
-      {rows.length === 0 ? <Empty text="Belum ada prospek aktif." /> : null}
+    <Section title={t("Prospek||tab")} to="/leads" testID="preview-leads">
+      {rows.length === 0 ? <Empty text={t("Belum ada prospek aktif.")} /> : null}
       {rows.map((l, i) => (
         <PreviewRow
           key={l.id}
@@ -470,8 +470,8 @@ function TenantPreview({ tenants }: { tenants?: any[] }) {
   // Contracts ending soonest first.
   const rows = [...(tenants || [])].sort((a, b) => (a.days_left ?? 9999) - (b.days_left ?? 9999)).slice(0, 3);
   return (
-    <Section title="Tenant" to="/tenants" testID="preview-tenants">
-      {rows.length === 0 ? <Empty text="Belum ada tenant." /> : null}
+    <Section title={t("Tenant||tab")} to="/tenants" testID="preview-tenants">
+      {rows.length === 0 ? <Empty text={t("Belum ada tenant.")} /> : null}
       {rows.map((tn, i) => (
         <PreviewRow
           key={tn.id}

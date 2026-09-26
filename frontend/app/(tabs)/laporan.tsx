@@ -84,7 +84,7 @@ export default function LaporanScreen() {
     { key: "collected", label: "Sewa diterima", icon: "check", tone: "brand", money: true },
     { key: "prospects", label: "Prospek baru", icon: "person", tone: "brand" },
     { key: "tenants", label: "Tenant aktif", icon: "key", tone: "warning" },
-    { key: "units", label: "Unit", icon: "building", tone: "neutral" },
+    { key: "units", label: "Unit||tab", icon: "building", tone: "neutral" },
   ];
 
   return (

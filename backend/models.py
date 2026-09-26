@@ -139,6 +139,10 @@ class Unit(BaseDocument):
     category: Optional[str] = None  # apartemen | rumah
     unit_type: str = 'Studio'
     address: Optional[str] = None  # where the unit is (shown in viewing invites and shares)
+    residence: Optional[str] = None  # cluster or apartment name, e.g. 'Tokyo Riverside PIK 2'
+    size_m2: Optional[int] = None
+    furnishing: Optional[str] = None  # furnished | semi | unfurnished
+    view: Optional[str] = None  # e.g. 'City view', 'Pool'
     city: Optional[str] = None
     monthly_price: int = 0
     deposit: int = 0

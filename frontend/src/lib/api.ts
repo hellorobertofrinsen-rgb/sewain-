@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { Platform } from "react-native";
 
 // Empty EXPO_PUBLIC_BACKEND_URL = same origin (the backend serves the web app itself).
@@ -37,7 +38,7 @@ async function toError(res: Response, fallback: string): Promise<ApiError> {
   const detail = data?.detail;
   const message =
     typeof detail === "string" ? detail : detail?.message || (Array.isArray(detail) ? "Data belum lengkap atau tidak valid." : fallback);
-  const err = new Error(message) as ApiError;
+  const err = new Error(t(message)) as ApiError;
   err.status = res.status;
   if (detail && typeof detail === "object" && typeof detail.code === "string") {
     err.code = detail.code;
@@ -61,7 +62,7 @@ export async function api<T = any>(
       body: opts.body != null ? JSON.stringify(opts.body) : undefined,
     });
   } catch {
-    throw new Error("Tidak bisa terhubung. Cek koneksi internetmu.") as ApiError;
+    throw new Error(t("Tidak bisa terhubung. Cek koneksi internetmu.")) as ApiError;
   }
   if (!res.ok) throw await toError(res, `Terjadi kesalahan (${res.status})`);
   return (await res.json().catch(() => ({}))) as T;

@@ -361,3 +361,27 @@ def test_prospect_and_tenant_photos(account):
     assert [x for x in account.ok('get', '/leads') if x['id'] == lid][0]['photo']
     assert [x for x in account.ok('get', '/tenants') if x['id'] == tid][0]['photo']
     assert account.c.delete(f'/api/leads/{lid}/photo', headers=account.h).json()['photo'] is None
+
+
+def test_unit_card_fields_and_matches_by_type(account):
+    body = {'name': 'A12', 'residence': 'Tokyo Riverside PIK 2', 'unit_type': '1 Bedroom', 'size_m2': 36,
+            'monthly_price': 4_500_000, 'deposit': 1_500_000, 'furnishing': 'semi', 'facilities': ['AC', 'Wi-Fi'],
+            'view': 'Pool', 'owner_name': 'Pak Hendra', 'owner_phone': '0812 1111 2222'}
+    u = account.ok('post', '/units', body)
+    for k in ('residence', 'size_m2', 'furnishing', 'view', 'facilities', 'owner_phone'):
+        assert u[k] == body[k], k
+    assert u['location'] == 'Tokyo Riverside PIK 2'
+    assert account.post('/units', {**body, 'unit_type': '4 Bedroom'}).status_code == 400
+    assert account.post('/units', {**body, 'furnishing': 'half'}).status_code == 400
+    # Another 1 Bedroom with a tenant, a 1BR prospect and a Studio prospect.
+    other = account.ok('post', '/units', {**body, 'name': 'B3'})
+    tid = account.ok('post', '/tenants', {'name': 'Kevin', 'unit_id': other['id'], 'start_date': '2026-01-01',
+                                          'contract_months': 12, 'monthly_rent': 4_000_000})['tenant_id']
+    lid = account.ok('post', '/leads', {'name': 'Sinta', 'phone': '0812 3', 'pref_category': 'rumah', 'pref_types': ['rumah:1 Bedroom']})['id']
+    account.ok('post', '/leads', {'name': 'Budi', 'phone': '0812 4', 'pref_category': 'apartemen', 'pref_types': ['apartemen:Studio']})
+    m = account.ok('get', f"/units/{u['id']}/matches")
+    assert [x['lead']['id'] for x in m['matches']] == [lid]  # same type, whatever the category
+    assert [x['id'] for x in m['tenants']] == [tid] and m['tenants'][0]['unit_name'] == 'B3'
+    listed = {x['id']: x for x in account.ok('get', '/units')}
+    assert listed[other['id']]['booked_until'] == '2026-12-31' or listed[other['id']]['booked_until']
+    assert listed[u['id']]['booked_until'] is None

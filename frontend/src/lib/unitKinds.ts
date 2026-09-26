@@ -16,6 +16,24 @@ export const TYPES_BY_CATEGORY: Record<Category, string[]> = {
   rumah: ["1 Bedroom", "2 Bedroom", "3 Bedroom", "4 Bedroom"],
 };
 
+/** What a unit can be (the add-unit form). */
+export const SIZES: { key: string; short: string }[] = [
+  { key: "Studio", short: "Studio" },
+  { key: "1 Bedroom", short: "1BR" },
+  { key: "2 Bedroom", short: "2BR" },
+  { key: "3 Bedroom", short: "3BR" },
+];
+
+export const FURNISHING: { key: string; label: string }[] = [
+  { key: "furnished", label: "Furnished" },
+  { key: "semi", label: "Semi-Furnished" },
+  { key: "unfurnished", label: "Unfurnished" },
+];
+export const furnishingLabel = (k?: string | null) => (k ? t(FURNISHING.find((x) => x.key === k)?.label || k) : "");
+
+/** Only these show on cards and details, and only when checked. */
+export const FACILITIES = ["AC", "Wi-Fi", "Water Heater"];
+
 export const TERMS: { key: string; label: string }[] = [
   { key: "harian", label: "Harian" },
   { key: "bulanan", label: "Bulanan" },
@@ -24,9 +42,10 @@ export const TERMS: { key: string; label: string }[] = [
 
 export const categoryLabel = (c?: string | null) => (c === "apartemen" ? t("Apartemen") : c === "rumah" ? t("Rumah") : "");
 
-/** "Apartemen · 1 Bedroom"; older units without a category show just their type. */
-export function unitKind(u: { category?: string | null; unit_type?: string | null }) {
-  return [categoryLabel(u.category), u.unit_type ? t(u.unit_type) : ""].filter(Boolean).join(" · ");
+/** "1 Bedroom (36 m²)"; older units may also carry "Apartemen" in front. */
+export function unitKind(u: { category?: string | null; unit_type?: string | null; size_m2?: number | null }) {
+  const type = [u.unit_type ? t(u.unit_type) : "", u.size_m2 ? `(${u.size_m2} m²)` : ""].filter(Boolean).join(" ");
+  return [categoryLabel(u.category), type].filter(Boolean).join(" · ");
 }
 
 /** Size options for a preference: 4 for one category, all 8 (labelled) for both. */

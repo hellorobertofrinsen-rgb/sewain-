@@ -52,13 +52,13 @@ def test_premium_unlimited_then_downgrade_hides_extra_units(account):
     assert len(account.ok('get', '/units')) == 4
 
     # CSV import + export are premium features.
-    res = account.ok('post', '/units/import-csv', {'csv_text': 'nama,jenis,tipe,alamat,harga_bulanan\n'
-                                                                'U5,apartemen,2br,"PIK 2, Jakarta",2500000\n'
-                                                                'U6,rumah,Studio,Bintaro,1\n'
-                                                                'U7,villa,Studio,Canggu,1'})
-    assert res['imported'] == 1 and len(res['errors']) == 2  # a house has no studio; villa is not a kind
+    res = account.ok('post', '/units/import-csv', {'csv_text': 'kode,hunian,tipe,luas,harga_bulanan,fasilitas,furnished\n'
+                                                                'U5,Tokyo Riverside,2br,40,2500000,"ac, wifi",semi\n'
+                                                                'U6,Casa,4BR,90,1,,\n'
+                                                                'U7,,Studio,20,1,,'})
+    assert res['imported'] == 1 and len(res['errors']) == 2  # no 4BR; residence is required
     csv_text = account.get('/export/units').text
-    assert 'U5' in csv_text and '2 Bedroom' in csv_text and 'PIK 2, Jakarta' in csv_text
+    assert 'U5' in csv_text and '2 Bedroom' in csv_text and 'AC, Wi-Fi' in csv_text and 'semi' in csv_text
 
     # Premium lapses after premium_until -> back to free; only the first 3 units stay visible.
     set_plan(account.email, 'premium', '2020-01-01')
