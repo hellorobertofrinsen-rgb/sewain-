@@ -63,6 +63,10 @@ class User(BaseModel):
     email: str
     password_hash: str
     is_demo: bool = False
+    # 'free' | 'premium'. Only changed manually by the owner (set_plan.py / admin endpoint),
+    # never from a user-facing endpoint. Missing = free (older accounts).
+    plan: str = 'free'
+    premium_until: Optional[str] = None  # YYYY-MM-DD inclusive; None = no expiry
     created_at: datetime = Field(default_factory=now_utc)
     model_config = ConfigDict(populate_by_name=True, extra='ignore')
 
@@ -106,6 +110,8 @@ class Unit(BaseDocument):
     status: str = 'kosong'  # kosong | terisi | reserved | maintenance
     photos: List[str] = Field(default_factory=list)
     notes: Optional[str] = None
+    owner_name: Optional[str] = None   # pemilik unit (agents manage units owned by others)
+    owner_phone: Optional[str] = None
     vacant_since: Optional[datetime] = None
     occupied_since: Optional[datetime] = None
 
@@ -138,18 +144,14 @@ class Lead(BaseDocument):
     match_score: Optional[int] = None
     match_reasons: List[str] = Field(default_factory=list)
     conversation_id: Optional[str] = None
-    source: str = 'manual'  # manual | chat_import
+    source: str = 'manual'  # manual | chat_import (older AI-imported leads)
     last_contact_at: Optional[datetime] = None
-
-
-class Conversation(BaseDocument):
-    source_type: str = 'paste'  # paste | txt | csv
-    raw_text: str = ''
-    message_count: int = 0
-    participant_count: int = 0
-    lead_count: int = 0
-    potential_value: int = 0
-    followup_count: int = 0
+    notes: Optional[str] = None
+    next_followup_date: Optional[str] = None  # YYYY-MM-DD — shows up on Hari Ini from this day
+    last_message: Optional[str] = None  # last follow-up text the agent sent
+    # Terms agreed during negotiation; pre-fill the deal -> tenant form.
+    # {unit_id, agreed_price, deposit, contract_months, note, updated_at}
+    negotiation: Optional[dict] = None
 
 
 class Viewing(BaseDocument):
@@ -203,15 +205,3 @@ class Activity(BaseDocument):
     entity_id: Optional[str] = None
     title: str
     detail: Optional[str] = None
-
-
-class AIInsight(BaseDocument):
-    type: str
-    input_ref: Optional[str] = None
-    output: dict = Field(default_factory=dict)
-
-
-class TanyaMessage(BaseDocument):
-    role: str  # user | assistant
-    text: str
-    actions: List[dict] = Field(default_factory=list)

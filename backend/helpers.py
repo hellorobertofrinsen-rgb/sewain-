@@ -1,9 +1,22 @@
 from __future__ import annotations
 
 import calendar
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timedelta, timezone
+
+from bson import ObjectId
+from fastapi import HTTPException
 
 from models import now_utc, today_wib, Payment
+
+MONTHS_ID = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus',
+             'September', 'Oktober', 'November', 'Desember']
+
+
+def oid(value: str | None, what: str = 'Data') -> ObjectId:
+    """Parse an id from the URL/body; malformed ids are a 404, not a server error."""
+    if not value or not ObjectId.is_valid(value):
+        raise HTTPException(404, f'{what} tidak ditemukan')
+    return ObjectId(value)
 
 
 def parse_date(s):
@@ -20,6 +33,26 @@ def parse_date(s):
 
 def last_day_of_month(y: int, m: int) -> int:
     return calendar.monthrange(y, m)[1]
+
+
+def add_months(d: date, months: int) -> date:
+    y, m = divmod(d.month - 1 + months, 12)
+    y, m = d.year + y, m + 1
+    return date(y, m, min(d.day, last_day_of_month(y, m)))
+
+
+def contract_end(start_iso: str, months: int) -> str:
+    """Last day of a contract of `months` months starting on start (1 Okt + 12 bln -> 30 Sep)."""
+    start = parse_date(start_iso) or today_wib().date()
+    return (add_months(start, months) - timedelta(days=1)).isoformat()
+
+
+def period_label(period: str) -> str:
+    try:
+        y, m = period.split('-')
+        return f'{MONTHS_ID[int(m) - 1]} {y}'
+    except Exception:
+        return period
 
 
 async def log_activity_async(account_id: str, action: str, entity: str, title: str,
@@ -43,7 +76,7 @@ async def log_activity_async(account_id: str, action: str, entity: str, title: s
 def generate_payments(account_id: str, tenant_id: str, unit_id: str, monthly_rent: int,
                       start_date: str, end_date: str | None, due_day: int,
                       origin: str = 'user') -> list[dict]:
-    """Generate monthly rent payments from the start month until end (capped at 24)."""
+    """Generate monthly rent payments from the start month until end (capped at 60)."""
     start = parse_date(start_date) or today_wib().date()
     end = parse_date(end_date)
     if end is None:
@@ -55,7 +88,7 @@ def generate_payments(account_id: str, tenant_id: str, unit_id: str, monthly_ren
     due_day = max(1, min(28, int(due_day or 10)))
     out = []
     y, m = start.year, start.month
-    while len(out) < 24:
+    while len(out) < 60:
         if date(y, m, 1) > end:
             break
         due = date(y, m, min(due_day, last_day_of_month(y, m)))

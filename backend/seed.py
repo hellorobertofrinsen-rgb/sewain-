@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, time as dtime
 from bson import ObjectId
 
 from database import properties, units, leads, tenants, payments, maintenance, viewings, activities
-from helpers import generate_payments, log_activity_async
+from helpers import add_months, contract_end, generate_payments, log_activity_async
 from models import (
     Property, Unit, Lead, Tenant, Maintenance, Viewing, now_utc, today_wib, WIB,
 )
@@ -58,13 +58,18 @@ async def seed_demo_account(account_id: str) -> None:
     await properties.insert_one(melati.to_mongo())
 
     # ---------------- Units (12) ----------------
+    OWNERS = {'A': ('Pak Hendra', '+62 812-1111-2222'), 'B': ('Bu Lina', '+62 813-3333-4444'),
+              'C': ('Pak Hendra', '+62 812-1111-2222'), 'D': ('Pak Anton', '+62 811-7777-8888'),
+              'M': ('Bu Sari', '+62 857-5555-6666')}
+
     def U(pid, name, utype, price, dep, bed, bath, status, facilities, vacant_days=None, photos=None,
           available_date=None, notes=None):
+        owner_name, owner_phone = OWNERS[name[0]]
         u = Unit(account_id=account_id, property_id=pid, name=name, unit_type=utype, city='Jakarta Utara' if pid == tokyo.id else 'Jakarta Pusat',
                  monthly_price=price, deposit=dep, bedrooms=bed, bathrooms=bath, furnished=True,
                  facilities=facilities, status=status, photos=photos or [], available_date=available_date,
                  notes=notes, vacant_since=_dt(vacant_days, 9) if vacant_days is not None else None,
-                 origin='seed')
+                 owner_name=owner_name, owner_phone=owner_phone, origin='seed')
         return u
 
     unit_docs = [
@@ -102,11 +107,17 @@ async def seed_demo_account(account_id: str) -> None:
                       start_date=start, end_date=end, monthly_rent=rent, deposit=dep,
                       payment_due_day=10, origin='seed')
 
+    month1 = today.replace(day=1)
+
+    def started(months_ago: int) -> str:
+        return add_months(month1, -months_ago).isoformat()
+
+    # Kevin's 12-month lease ends this month -> shows up as "kontrak habis" on Hari Ini.
     tenant_plan = [
-        ('Kevin', '+62 812-7700-2314', 'B07', 2_900_000, '2025-12-01', '2026-11-30', 1_200_000, 'late4'),
-        ('Sinta', '+62 813-2200-8845', 'B12', 2_900_000, '2026-02-01', '2027-01-31', 1_200_000, 'paid'),
-        ('Dewi', '+62 856-4400-1290', 'M01', 1_500_000, '2026-04-01', '2027-03-31', 500_000, 'today'),
-        ('Rina', '+62 878-3300-5521', 'A05', 3_000_000, '2026-05-01', '2027-04-30', 1_200_000, 'soon'),
+        ('Kevin', '+62 812-7700-2314', 'B07', 2_900_000, started(11), contract_end(started(11), 12), 1_200_000, 'late4'),
+        ('Sinta', '+62 813-2200-8845', 'B12', 2_900_000, started(7), contract_end(started(7), 12), 1_200_000, 'paid'),
+        ('Dewi', '+62 856-4400-1290', 'M01', 1_500_000, started(5), contract_end(started(5), 12), 500_000, 'today'),
+        ('Rina', '+62 878-3300-5521', 'A05', 3_000_000, started(4), contract_end(started(4), 12), 1_200_000, 'soon'),
     ]
     for name, phone, uname, rent, start, end, dep, mode in tenant_plan:
         t = T(name, phone, uname, rent, start, end, dep)
@@ -131,7 +142,7 @@ async def seed_demo_account(account_id: str) -> None:
 
     # ---------------- Leads ----------------
     def L(**kw):
-        return Lead(account_id=account_id, origin='seed', source='chat_import', **kw)
+        return Lead(account_id=account_id, origin='seed', source='manual', **kw)
 
     jessica = L(
         name='Jessica', phone='+62 811-9000-3342', budget_min=3_000_000, budget_max=3_500_000,
@@ -148,12 +159,15 @@ async def seed_demo_account(account_id: str) -> None:
     )
     rizky = L(
         name='Rizky', phone='+62 812-3456-7788', budget_min=6_000_000, budget_max=7_000_000,
-        preferred_location='PIK 2', unit_type='2 Bedroom', move_in_date='Agustus', occupants=3,
-        requirements=['Ada dapur', 'Untuk keluarga'], interest='medium',
-        quote='Kalau 2 kamar sekitar 6-7 juta ada ga kak?', last_interaction_at=_dt(2, 11),
-        needs_followup=False, confidence=0.85, status='sedang_ngobrol',
-        ai_note='Masih membandingkan beberapa apartemen, pindah bulan Agustus.',
-        matched_unit_id=umap['D11'], match_score=88, match_reasons=['Masuk budget', 'Tipe 2 Bedroom', 'Tersedia sekarang'],
+        preferred_location='PIK 2', unit_type='2 Bedroom', move_in_date='Bulan depan', occupants=3,
+        requirements=['Ada dapur', 'Untuk keluarga'], interest='high',
+        quote='Kalau 2 kamar sekitar 6-7 juta ada ga kak?', last_interaction_at=_dt(4, 11),
+        needs_followup=False, status='negotiation',
+        notes='Sudah lihat D08, cocok. Minta diskon sedikit karena kontrak setahun.',
+        matched_unit_id=umap['D08'], match_score=85, match_reasons=['Masuk budget', 'Tipe 2 Bedroom'],
+        negotiation={'unit_id': umap['D08'], 'agreed_price': 6_300_000, 'deposit': 2_000_000,
+                     'contract_months': 12, 'note': 'Owner OK turun Rp200rb kalau kontrak 12 bulan.',
+                     'updated_at': _dt(4, 11)},
     )
     maya = L(
         name='Maya', phone='+62 857-1111-2048', budget_min=1_200_000, budget_max=2_500_000,
@@ -172,7 +186,7 @@ async def seed_demo_account(account_id: str) -> None:
         preferred_location='Cempaka Putih', unit_type='Kost', move_in_date='Juli', occupants=1,
         requirements=['Kost putra'], interest='high',
         quote='Masih kosong nggak kak untuk bulan depan?', last_interaction_at=_dt(1, 9),
-        needs_followup=False, confidence=0.8, status='baru', ai_note='Baru bertanya, belum dijawab detail.',
+        needs_followup=False, confidence=0.8, status='viewing', notes='Lihat kamar M04 kemarin sore.',
         matched_unit_id=umap['M04'], match_score=86, match_reasons=['Masuk budget', 'Tersedia sekarang'],
     )
     liliana = L(
@@ -189,9 +203,12 @@ async def seed_demo_account(account_id: str) -> None:
     viewing = Viewing(account_id=account_id, lead_id=liliana.id, unit_id=umap['D11'],
                       scheduled_at=_next_saturday_14(), status='menunggu', origin='seed')
     await viewings.insert_one(viewing.to_mongo())
-    v_done = Viewing(account_id=account_id, lead_id=rizky.id, unit_id=umap['C03'],
+    v_done = Viewing(account_id=account_id, lead_id=rizky.id, unit_id=umap['D08'],
                      scheduled_at=_dt(6, 14), status='selesai', origin='seed')
     await viewings.insert_one(v_done.to_mongo())
+    v_result = Viewing(account_id=account_id, lead_id=budi.id, unit_id=umap['M04'],
+                       scheduled_at=_dt(1, 16), status='terjadwal', origin='seed')
+    await viewings.insert_one(v_result.to_mongo())
 
     # ---------------- Maintenance ----------------
     m1 = Maintenance(account_id=account_id, unit_id=umap['M03'], description='AC kamar M03 bocor dari tadi malam dan airnya kena kasur.',
@@ -208,6 +225,5 @@ async def seed_demo_account(account_id: str) -> None:
         ('property_added', 'property', 'Menambahkan properti Tokyo Riverside Apartment'),
         ('property_added', 'property', 'Menambahkan properti Kos Melati Putih'),
         ('units_imported', 'unit', 'Impor 12 unit properti'),
-        ('chat_analyzed', 'conversation', 'Impor contoh percakapan WhatsApp'),
     ]:
         await log_activity_async(account_id, act[0], act[1], act[2], origin='seed')
