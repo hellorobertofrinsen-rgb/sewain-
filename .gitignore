@@ -80,3 +80,7 @@ memory/test_credentials.md
 
 # Mobile development
 android-sdk/
+# Sewain
+.env
+backend/.env
+frontend/.env
