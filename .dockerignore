@@ -1,0 +1,8 @@
+**/node_modules
+**/.expo
+**/.metro-cache
+frontend/dist
+**/__pycache__
+**/.pytest_cache
+**/.env
+.git

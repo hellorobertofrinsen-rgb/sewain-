@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "Sewain",
+    "slug": "sewain",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "sewain",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "id.sewain.app",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Pilih foto unit untuk ditampilkan ke calon penyewa"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#121214"
+      },
+      "package": "id.sewain.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/images/favicon.png",
+      "name": "Sewain",
+      "shortName": "Sewain",
+      "lang": "id",
+      "themeColor": "#121214",
+      "backgroundColor": "#121214",
+      "description": "AI admin buat bisnis sewa properti."
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-image.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#121214"
+        }
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

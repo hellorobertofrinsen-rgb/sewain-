@@ -1,0 +1,17 @@
+# Optional one-click setup for Render (render.com → New → Blueprint).
+# The Dockerfile works on any Docker host too (Koyeb, Fly.io, Railway, a VPS…).
+services:
+  - type: web
+    name: sewain
+    runtime: docker
+    plan: free            # sleeps after 15 min idle; switch to "starter" for always-on
+    healthCheckPath: /api/health
+    envVars:
+      - key: MONGO_URL     # MongoDB Atlas connection string (free M0 cluster is enough to start)
+        sync: false
+      - key: DB_NAME
+        value: sewain
+      - key: AUTH_SECRET   # signs login tokens — keep it secret, never change it casually
+        generateValue: true
+      - key: ADMIN_SECRET  # enables POST /api/admin/set-plan (manual Free -> Premium)
+        generateValue: true

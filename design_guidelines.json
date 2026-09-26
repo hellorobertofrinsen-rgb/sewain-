@@ -1,0 +1,175 @@
+{
+  "app_name": "Sewain",
+  "personality": "1 iOS-Native Clean (adapted for ChatGPT × Apple minimalist dark-charcoal & off-white restraint)",
+  "personality_one_liner": "Calm, expensive-because-restrained rental operating system with pristine typography, generous whitespace, and zero dashboard clutter.",
+  "color": {
+    "surface": "#121214",
+    "onSurface": "#F4F4F6",
+    "surfaceSecondary": "#1A1A1E",
+    "onSurfaceSecondary": "#A1A1AA",
+    "surfaceTertiary": "#26262C",
+    "onSurfaceTertiary": "#D4D4D8",
+    "surfaceInverse": "#FAFAFA",
+    "onSurfaceInverse": "#121214",
+    "brand": "#E4E4E7",
+    "brandPrimary": "#FAFAFA",
+    "onBrandPrimary": "#121214",
+    "brandSecondary": "#A1A1AA",
+    "onBrandSecondary": "#121214",
+    "brandTertiary": "#27272A",
+    "onBrandTertiary": "#FAFAFA",
+    "success": "#34D399",
+    "onSuccess": "#064E3B",
+    "warning": "#FBBF24",
+    "onWarning": "#78350F",
+    "error": "#F87171",
+    "onError": "#7F1D1D",
+    "info": "#60A5FA",
+    "onInfo": "#1E3A8A",
+    "border": "#27272A",
+    "borderStrong": "#3F3F46",
+    "divider": "#1E1E24",
+    "muted": "#71717A",
+    "onBrand": "#121214"
+  },
+  "typography": {
+    "displayFontFamily": "Rubik",
+    "textFontFamily": "Rubik",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical breathing room with 16pt outer paddings, 12pt card gaps, and 56pt minimum interactive touch targets.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 8,
+    "md": 14,
+    "lg": 22,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Ionicons",
+  "glassmorphism": {
+    "enabled": false,
+    "do's": [
+      "Use solid dark charcoal surfaces (#121214 / #1A1A1E) with subtle 1px structural borders (#27272A)",
+      "Rely on exquisite typography hierarchy and whitespace instead of heavy shadows or glass blurs"
+    ],
+    "dont's": [
+      "No glassmorphism everywhere, no neon glows, no crypto or SaaS dashboard overload",
+      "No gradient text or rainbow accent fills"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "solid surfaceSecondary",
+      "android": "solid surfaceSecondary",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Hari Ini",
+      "purpose": "Answers 'APA YANG PERLU GUE BERESIN HARI INI?' with actionable queue cards for follow-ups, viewings, unpaid rent, and maintenance.",
+      "states": {
+        "loading": "Centered minimalist spinner with muted status subtitle",
+        "empty": "Clean illustration + 'Semua beres hari ini. Santai dulu.' + Primary CTA to check leads",
+        "error": "Readable error banner with retry button"
+      },
+      "layout": "Sticky header with logo and live units badge, followed by summary metric strip, priority action queue with swipeable beresin cards, and quick AI import trigger."
+    },
+    {
+      "name": "Unit",
+      "purpose": "Manages unit portfolio (kos, apartment, villa, kontrakan) across statuses with quick occupancy filters and AI matching.",
+      "states": {
+        "loading": "Skeleton card pulse in dark charcoal",
+        "empty": "Empty unit illustration + 'Belum ada unit terdaftar' + Add Unit CTA",
+        "error": "Connection error state with reload action"
+      },
+      "layout": "Segmented status filter chips (Semua, Terisi, Kosong, Perbaikan), vertical stack of unit cards with occupancy tags, rent pricing, and 'Cari Penyewa AI' action."
+    },
+    {
+      "name": "Calon Penyewa",
+      "purpose": "Tracks prospective tenants extracted from WhatsApp chats with stage Kanban and AI lead scoring.",
+      "states": {
+        "loading": "Skeleton lead cards loading state",
+        "empty": "No leads illustration + 'Belum ada calon penyewa' + WhatsApp Chat Import CTA",
+        "error": "Failed to load leads state"
+      },
+      "layout": "Horizontal stage filter pills (Baru, Ngobrol, Viewing, Deal), WhatsApp Chat Paste/Upload banner at top, and list of rich lead cards with match score and draft follow-up."
+    },
+    {
+      "name": "Tenant",
+      "purpose": "Manages active tenants, lease dates, and rent payment tracking with one-tap WhatsApp reminders.",
+      "states": {
+        "loading": "Loading active tenant records",
+        "empty": "No active tenants message + Add lease CTA",
+        "error": "Unable to fetch tenant records"
+      },
+      "layout": "Payment status summary header (Sudah Bayar / Belum Bayar), tenant list with unit number, due date badge, and quick action buttons for payment confirmation and reminder."
+    },
+    {
+      "name": "Masalah",
+      "purpose": "Tracks property maintenance and tenant complaints with AI classification (priority, category, estimated cost).",
+      "states": {
+        "loading": "Loading maintenance tickets",
+        "empty": "All clear illustration + 'Tidak ada masalah aktif' + Log issue button",
+        "error": "Failed to load maintenance records"
+      },
+      "layout": "Priority filter tabs (Darurat, Sedang, Selesai), ticket list cards featuring unit badge, AI priority tag, description, and status toggle."
+    },
+    {
+      "name": "Tanya Sewain & Impact",
+      "purpose": "AI assistant querying live property database and Impact analytics showing honest operational metrics and before/after time saved.",
+      "states": {
+        "loading": "Initializing AI assistant and metrics computation",
+        "empty": "Start conversation prompt with quick suggested questions",
+        "error": "AI query timeout error with retry"
+      },
+      "layout": "Tabbed secondary view featuring AI chat message thread with quick prompt chips, followed by Impact metrics cards (jam admin dihemat, unit occupancy rate, cashflow collection speed)."
+    }
+  ],
+  "images": {
+    "logo": {
+      "url": "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=200&auto=format&fit=crop",
+      "alt": "Sewain minimalist s logo"
+    },
+    "empty_state_illustration": {
+      "url": "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?q=80&w=600&auto=format&fit=crop",
+      "dark": "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?q=80&w=600&auto=format&fit=crop",
+      "alt": "Minimalist architectural interior dark aesthetic"
+    },
+    "hero_banner": {
+      "url": "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?q=80&w=1000&auto=format&fit=crop",
+      "dark": "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?q=80&w=1000&auto=format&fit=crop",
+      "alt": "Modern Indonesian villa interior dark moody"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Build Sewain as a world-class React Native mobile app with bottom navigation and responsive web sidebar layout.",
+    "Strictly follow the ChatGPT x Apple visual direction: charcoal (#121214) base, off-white (#FAFAFA) text, muted zinc borders (#27272A), zero neon, zero glassmorphism overload.",
+    "Every screen must feature loading, empty, and error states following the prompt requirements.",
+    "Implement WhatsApp chat import AI parser flow for leads extraction (.txt / paste simulation with staged extraction).",
+    "Home screen answers 'APA YANG PERLU GUE BERESIN HARI INI?' with swipeable action cards ('Beresin satu-satu').",
+    "All Indonesian UI copy must be natural and user-focused ('Calon penyewa', 'Perlu follow-up', 'Belum bayar', 'Tanya Sewain').",
+    "Ensure touch targets are >= 44x44pt and safe area is respected at all screen roots."
+  ]
+}
