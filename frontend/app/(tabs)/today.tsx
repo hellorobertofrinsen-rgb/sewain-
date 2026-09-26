@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, Text as RNText, View, useWindowDimensions } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { Platform, ScrollView, Text as RNText, View, useWindowDimensions } from "react-native";
+import Animated, { FadeOut, LinearTransition, ReduceMotion } from "react-native-reanimated";
 import { router } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,12 +11,20 @@ import { LogoFull } from "@/src/components/Logo";
 import { Sheet } from "@/src/components/Sheet";
 import { DateInput } from "@/src/components/DateInput";
 import { FollowupSheet, FollowupTarget, LeaseSheet, LeaseTarget, ReminderSheet, ReminderTarget } from "@/src/components/ActionSheets";
-import { Button, Card, EmptyState, ErrorBox, Field, SectionTitle, Spinner, StatusPill } from "@/src/components/ui";
+import { Button, Card, EmptyState, ErrorBox, Field, SectionTitle, Spinner, StatusPill, PressableScale } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
 import { usePlan } from "@/src/lib/plan";
 import { dateLabel, dateTimeLabel, greeting, leaseLeftLabel, rupiah, rupiahShort, todayISO } from "@/src/lib/format";
 import { fonts, makeStyles, radius, spacing, useTheme, withAlpha } from "@/src/theme";
+import { DURATION, EASE_IN_OUT, EASE_OUT } from "@/src/motion";
+
+// Hari Ini is opened many times a day, so the queue does NOT animate in (it should
+// simply be there). When an item is finished it fades out and the rest glide up to
+// close the gap — that prevents a jarring jump, which is worth animating.
+// The fade is opacity-only, so it stays under reduced motion; the reflow (movement) doesn't.
+const ITEM_EXIT = FadeOut.duration(180).easing(EASE_OUT).reduceMotion(ReduceMotion.Never);
+const ITEM_REFLOW = LinearTransition.duration(DURATION.reflow).easing(EASE_IN_OUT);
 
 type QueueItem = any;
 type TodayData = {
@@ -125,9 +133,9 @@ export default function TodayScreen() {
         ) : (
           <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
             <LogoFull size={22} bg={colors.surface} />
-            <Pressable testID="header-settings-button" onPress={() => router.push("/settings")} style={s.iconBtn} accessibilityLabel="Pengaturan">
+            <PressableScale testID="header-settings-button" onPress={() => router.push("/settings")} style={s.iconBtn} accessibilityLabel="Pengaturan">
               <Icon name="sliders" size={20} color={colors.onSurfaceSecondary} />
-            </Pressable>
+            </PressableScale>
           </View>
         )}
 
@@ -141,12 +149,12 @@ export default function TodayScreen() {
           {counts.total > 0 ? <RNText style={s.summary}>{summaryLine(counts)}</RNText> : null}
 
           {plan && plan.hidden_units > 0 ? (
-            <Pressable testID="hidden-units-banner" onPress={() => showUpgrade("hidden_units")} style={({ pressed }) => [s.banner, pressed && { opacity: 0.8 }]}>
+            <PressableScale soft testID="hidden-units-banner" onPress={() => showUpgrade("hidden_units")} style={[s.banner]}>
               <Icon name="alert" size={16} color={colors.warning} />
               <RNText style={s.bannerText}>
                 {plan.hidden_units} unit disembunyikan karena paket Free. Upgrade untuk menampilkannya lagi.
               </RNText>
-            </Pressable>
+            </PressableScale>
           ) : null}
 
           {units.total === 0 ? (
@@ -162,10 +170,10 @@ export default function TodayScreen() {
             <>
               <View style={s.statGrid}>
                 {statCards.map((c) => (
-                  <Pressable key={c.testID} testID={c.testID} onPress={() => router.push(c.to as any)} style={({ pressed }) => [s.statCard, pressed && { opacity: 0.75 }]}>
+                  <PressableScale soft key={c.testID} testID={c.testID} onPress={() => router.push(c.to as any)} style={[s.statCard]}>
                     <RNText style={s.statValue} numberOfLines={1}>{c.v}</RNText>
                     <RNText style={s.statLabel}>{c.l}</RNText>
-                  </Pressable>
+                  </PressableScale>
                 ))}
               </View>
 
@@ -173,7 +181,7 @@ export default function TodayScreen() {
                 <Button title="Beresin satu-satu" onPress={() => scrollRef.current?.scrollTo({ y: queueY.current - 8, animated: true })} testID="beresin-button" style={{ marginTop: spacing.md }} />
               ) : null}
 
-              <Pressable testID="unit-summary-card" onPress={() => router.push("/units" as any)} style={({ pressed }) => [s.unitCard, pressed && { opacity: 0.8 }]}>
+              <PressableScale soft testID="unit-summary-card" onPress={() => router.push("/units" as any)} style={[s.unitCard]}>
                 <View style={{ flex: 1 }}>
                   <RNText style={s.unitCardTitle}>Unit</RNText>
                   <RNText style={s.unitCardSub}>
@@ -188,14 +196,14 @@ export default function TodayScreen() {
                   </View>
                 </View>
                 <Icon name="chevron-right" size={18} color={colors.muted} />
-              </Pressable>
+              </PressableScale>
             </>
           )}
 
           <View onLayout={(e) => (queueY.current = e.nativeEvent.layout.y + (insets.top || 0))} style={{ marginTop: spacing.xl, gap: spacing.md }}>
             {items.length > 0 ? <SectionTitle>Antrean hari ini</SectionTitle> : null}
-            {items.map((item, idx) => (
-              <Animated.View key={`${item.type}-${item.id}`} entering={FadeIn.duration(250).delay(Math.min(idx * 40, 300))} exiting={FadeOut.duration(250)}>
+            {items.map((item) => (
+              <Animated.View key={`${item.type}-${item.id}`} exiting={ITEM_EXIT} layout={ITEM_REFLOW}>
                 {item.type === "followup" ? (
                   <Card testID={`queue-followup-${item.id}`}>
                     <View style={s.cardHead}>

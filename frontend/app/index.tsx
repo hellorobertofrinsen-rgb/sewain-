@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { Pressable, Text as RNText, View } from "react-native";
+import { Text as RNText, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LogoMark } from "@/src/components/Logo";
-import { Button, ErrorBox, Field, Input } from "@/src/components/ui";
+import { Button, ErrorBox, Field, Input, PressableScale } from "@/src/components/ui";
 import { useAuth } from "@/src/lib/auth";
 import { fonts, makeStyles, radius, spacing, useTheme, withAlpha } from "@/src/theme";
 
@@ -76,6 +76,8 @@ export default function Login() {
                 onChangeText={setName}
                 placeholder="Nama kamu"
                 autoCapitalize="words"
+                autoComplete="name"
+                enterKeyHint="next"
               />
             </Field>
           ) : null}
@@ -86,7 +88,10 @@ export default function Login() {
               onChangeText={setEmail}
               placeholder="nama@email.com"
               autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
               keyboardType="email-address"
+              enterKeyHint="next"
             />
           </Field>
           <Field label="Password">
@@ -96,6 +101,9 @@ export default function Login() {
               onChangeText={setPassword}
               placeholder="••••••••"
               secureTextEntry
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              enterKeyHint="go"
+              onSubmitEditing={submit}
             />
           </Field>
           {error ? <ErrorBox message={error} /> : null}
@@ -106,7 +114,7 @@ export default function Login() {
             loading={busy === "form"}
             size="lg"
           />
-          <Pressable
+          <PressableScale
             testID="login-mode-toggle"
             onPress={() => {
               setMode(mode === "login" ? "register" : "login");
@@ -117,7 +125,7 @@ export default function Login() {
             <RNText style={s.toggleText}>
               {mode === "login" ? "Belum punya akun? Daftar dulu" : "Sudah punya akun? Masuk"}
             </RNText>
-          </Pressable>
+          </PressableScale>
         </View>
 
         <View style={s.dividerRow}>

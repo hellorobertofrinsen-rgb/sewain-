@@ -1,8 +1,10 @@
 import React, { useState } from "react";
-import { Linking, Pressable, ScrollView, Text as RNText, View } from "react-native";
+import { Linking, ScrollView, Text as RNText, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated from "react-native-reanimated";
+import { STATE_TRANSITION } from "@/src/motion";
 
 import { ScreenHeader } from "@/src/components/ScreenHeader";
 import { Sheet } from "@/src/components/Sheet";
@@ -10,7 +12,7 @@ import { Icon } from "@/src/components/Icon";
 import { DateInput } from "@/src/components/DateInput";
 import { FollowupSheet } from "@/src/components/ActionSheets";
 import { LeadForm, LeadFormValue, formToBody, leadToForm } from "@/src/components/LeadForm";
-import { Button, Card, Chip, ErrorBox, Field, Input, SectionTitle, Spinner, StatusPill, Textarea } from "@/src/components/ui";
+import { Button, Card, Chip, ErrorBox, Field, Input, SectionTitle, Spinner, StatusPill, Textarea, PressableScale } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
 import { waLink } from "@/src/lib/messages";
@@ -85,9 +87,9 @@ export default function LeadDetail() {
       <ScreenHeader
         title={lead.name}
         right={
-          <Pressable testID="lead-edit-button" onPress={() => setSheet("edit")} style={s.headerBtn} accessibilityLabel="Edit">
+          <PressableScale testID="lead-edit-button" onPress={() => setSheet("edit")} style={s.headerBtn} accessibilityLabel="Edit">
             <Icon name="pencil" size={18} color={colors.onSurfaceSecondary} />
-          </Pressable>
+          </PressableScale>
         }
       />
       <ScrollView contentContainerStyle={[s.body, { paddingBottom: insets.bottom + spacing.xxxl }]} showsVerticalScrollIndicator={false} testID="lead-detail-screen">
@@ -98,7 +100,7 @@ export default function LeadDetail() {
           <View style={s.stages} testID="lead-stages">
             {STAGES.map((st, i) => (
               <View key={st.key} style={{ flex: 1, gap: 6 }}>
-                <View style={[s.stageBar, i <= stage && { backgroundColor: status === "deal" ? colors.success : colors.onSurface }]} />
+                <Animated.View style={[STATE_TRANSITION, s.stageBar, i <= stage && { backgroundColor: status === "deal" ? colors.success : colors.onSurface }]} />
                 <RNText style={[s.stageLabel, i === stage && s.stageLabelActive]}>{st.label}</RNText>
               </View>
             ))}
@@ -163,10 +165,10 @@ export default function LeadDetail() {
         {/* Profile */}
         <Card>
           {lead.phone ? (
-            <Pressable onPress={() => wa && Linking.openURL(wa)} style={[s.infoRow, s.rowBorder]} testID="lead-phone-row">
+            <PressableScale role="link" onPress={() => wa && Linking.openURL(wa)} style={[s.infoRow, s.rowBorder]} testID="lead-phone-row">
               <RNText style={s.rowLabel}>WhatsApp</RNText>
               <RNText style={[s.rowValue, wa ? { color: colors.info } : null]}>{lead.phone}</RNText>
-            </Pressable>
+            </PressableScale>
           ) : null}
           <Row label="Budget" value={lead.budget_max || lead.budget_min ? `${rupiah(lead.budget_max || lead.budget_min)} / bulan` : "-"} />
           <Row label="Cari tipe" value={lead.unit_type || "-"} />
@@ -203,11 +205,11 @@ export default function LeadDetail() {
             {(lead.suggestions || []).filter((x: any) => x.unit.id !== lead.matched_unit?.id).map((x: any) => (
               <Card key={x.unit.id} testID={`suggestion-${x.unit.id}`}>
                 <View style={s.rowBetween}>
-                  <Pressable style={{ flex: 1 }} onPress={() => router.push(`/unit/${x.unit.id}` as any)}>
+                  <PressableScale style={{ flex: 1 }} onPress={() => router.push(`/unit/${x.unit.id}` as any)}>
                     <RNText style={s.suggestName}>{x.unit.name}{x.unit.property_name ? ` · ${x.unit.property_name}` : ""}</RNText>
                     <RNText style={s.muted}>{x.unit.unit_type} · {rupiahShort(x.unit.monthly_price)}/bln</RNText>
                     <RNText style={s.reasons}>✓ {x.reasons.join("  ✓ ")}</RNText>
-                  </Pressable>
+                  </PressableScale>
                   <Button title="Pilih" variant="ghost" size="sm" onPress={() => pickUnit.mutate(x.unit.id)} testID={`pick-unit-${x.unit.id}`} />
                 </View>
               </Card>

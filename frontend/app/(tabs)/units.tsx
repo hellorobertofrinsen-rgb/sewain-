@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { FlatList, Pressable, ScrollView, Text as RNText, View } from "react-native";
+import { FlatList, ScrollView, Text as RNText, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usesNativeTabs } from "@/src/navigation";
 import { Icon } from "@/src/components/Icon";
 import { Sheet } from "@/src/components/Sheet";
-import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Field, Input, Spinner, StatusPill, SwitchRow } from "@/src/components/ui";
+import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Field, Input, Spinner, StatusPill, SwitchRow, PressableScale } from "@/src/components/ui";
 import { UnitThumb } from "@/src/components/UnitThumb";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
@@ -86,20 +86,20 @@ export default function UnitsScreen() {
     <View style={s.root}>
       <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
         <RNText style={s.title}>Unit</RNText>
-        <Pressable testID="add-unit-button" onPress={openAdd} style={({ pressed }) => [s.addBtn, pressed && { opacity: 0.7 }]}>
+        <PressableScale testID="add-unit-button" onPress={openAdd} style={[s.addBtn]}>
           <Icon name="plus" size={18} color={colors.onBrandPrimary} />
           <RNText style={s.addText}>Tambah</RNText>
-        </Pressable>
+        </PressableScale>
       </View>
 
       {isFree && plan ? (
-        <Pressable onPress={() => showUpgrade(plan.hidden_units > 0 ? "hidden_units" : "general")} testID="unit-usage">
+        <PressableScale onPress={() => showUpgrade(plan.hidden_units > 0 ? "hidden_units" : "general")} testID="unit-usage">
           <RNText style={s.usage}>
             {plan.hidden_units > 0
               ? `${plan.hidden_units} unit disembunyikan (paket Free) · Upgrade untuk menampilkan`
               : `${plan.usage.units}/${plan.limits.max_units} unit · paket Free`}
           </RNText>
-        </Pressable>
+        </PressableScale>
       ) : null}
 
       <ChipRow testID="unit-filter-row">

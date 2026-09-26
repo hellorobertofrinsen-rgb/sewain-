@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Pressable, Text as RNText, View } from "react-native";
-import { Chip, Field, Input, Textarea } from "./ui";
+import { Text as RNText, View } from "react-native";
+import { Chip, Field, Input, Textarea, PressableScale } from "./ui";
 import { DateInput } from "./DateInput";
 import { moneyInput, parseMoney } from "@/src/lib/format";
 import { fonts, makeStyles, spacing } from "@/src/theme";
@@ -94,9 +94,9 @@ export function LeadForm({ value, onChange, startExpanded = false }: { value: Le
           </Field>
         </>
       ) : (
-        <Pressable onPress={() => setMore(true)} testID="lead-more-toggle" style={{ paddingVertical: 4 }}>
+        <PressableScale onPress={() => setMore(true)} testID="lead-more-toggle" style={{ paddingVertical: 4 }}>
           <RNText style={s.more}>+ Lokasi, rencana pindah, kebutuhan, catatan</RNText>
-        </Pressable>
+        </PressableScale>
       )}
     </View>
   );

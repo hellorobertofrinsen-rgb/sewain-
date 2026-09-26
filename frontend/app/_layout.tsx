@@ -4,6 +4,7 @@ import * as Font from "expo-font";
 import { useEffect } from "react";
 import { LogBox, Platform, StatusBar, View } from "react-native";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { ErrorBoundary } from "@/src/components/error-boundary";
 import { queryClient } from "@/src/query-client";
@@ -40,6 +41,7 @@ export default function RootLayout() {
       {!fontsLoaded ? (
         <View style={{ flex: 1, backgroundColor: "#121214" }} />
       ) : (
+        <GestureHandlerRootView style={{ flex: 1 }}>
         <QueryClientProvider client={queryClient}>
           <KeyboardProvider>
             <StatusBar barStyle="light-content" backgroundColor={colors.surface} />
@@ -54,6 +56,7 @@ export default function RootLayout() {
             </AuthProvider>
           </KeyboardProvider>
         </QueryClientProvider>
+        </GestureHandlerRootView>
       )}
     </ErrorBoundary>
   );

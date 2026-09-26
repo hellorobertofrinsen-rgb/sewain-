@@ -1,15 +1,72 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  PressableProps,
   ScrollView,
+  StyleProp,
   Switch,
   Text as RNText,
   TextInput,
   View,
+  ViewStyle,
 } from "react-native";
+import Animated, { useReducedMotion } from "react-native-reanimated";
 import { fonts, makeStyles, radius, spacing, useTheme, withAlpha } from "@/src/theme";
+import { CSS_EASE_OUT, DURATION, PRESS_SCALE, PRESS_SCALE_SOFT, STATE_TRANSITION } from "@/src/motion";
 import { Icon, IconName } from "./Icon";
+
+// ------------------------------ PressableScale ---------------------------------
+// Every tappable thing in the app. Feedback lands on press-in (finger down), not on
+// release: a 3% scale over 120ms with a strong ease-out — near-imperceptible, which
+// is the ceiling for something touched tens of times a day. Reduced motion swaps the
+// movement for a dim. A Reanimated CSS transition runs it on the UI thread / CSS.
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+const PRESS_TRANSITION: any = {
+  transitionProperty: ["transform", "opacity"],
+  transitionDuration: DURATION.press,
+  transitionTimingFunction: CSS_EASE_OUT,
+};
+
+export function PressableScale({
+  style,
+  soft,
+  disabled,
+  children,
+  role = "button",
+  ...rest
+}: Omit<PressableProps, "style" | "children"> & {
+  style?: StyleProp<ViewStyle>;
+  soft?: boolean; // large surfaces (cards) scale less
+  role?: "button" | "link" | "tab";
+  children?: React.ReactNode;
+}) {
+  const reduced = useReducedMotion();
+  const [pressed, setPressed] = useState(false);
+  const pressedStyle = reduced ? { opacity: 0.7 } : { transform: [{ scale: soft ? PRESS_SCALE_SOFT : PRESS_SCALE }] };
+  return (
+    <AnimatedPressable
+      accessibilityRole={role}
+      accessibilityState={{ disabled: !!disabled }}
+      disabled={disabled}
+      pressRetentionOffset={16}
+      {...rest}
+      onPressIn={(e) => {
+        setPressed(true);
+        rest.onPressIn?.(e);
+      }}
+      onPressOut={(e) => {
+        setPressed(false);
+        rest.onPressOut?.(e);
+      }}
+      style={[PRESS_TRANSITION, { transform: [{ scale: 1 }] }, style, pressed && !disabled && pressedStyle]}
+    >
+      {children}
+    </AnimatedPressable>
+  );
+}
 
 // --------------------------------- Button -----------------------------------
 
@@ -38,16 +95,16 @@ export function Button({
   const s = useStyles();
   const disabledAll = disabled || loading;
   return (
-    <Pressable
+    <PressableScale
       testID={testID}
-      onPress={disabledAll ? undefined : onPress}
-      style={({ pressed }) => [
+      onPress={onPress}
+      disabled={disabledAll}
+      style={[
         s.btn,
         s[variant],
         size === "sm" && s.btnSm,
         size === "lg" && s.btnLg,
         disabledAll && { opacity: 0.45 },
-        pressed && !disabledAll && { opacity: 0.75 },
         style,
       ]}
     >
@@ -66,7 +123,7 @@ export function Button({
           ) : null}
         </>
       )}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -157,15 +214,16 @@ export function Chip({
 }) {
   const s = useStyles();
   return (
-    <Pressable
+    <PressableScale
       testID={testID}
       onPress={onPress}
-      style={[s.chip, active && s.chipActive]}
+      accessibilityState={{ selected: active }}
+      style={[STATE_TRANSITION, s.chip, active && s.chipActive]}
     >
       <RNText style={[s.chipText, active && s.chipTextActive]} numberOfLines={1}>
         {label}
       </RNText>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -200,9 +258,9 @@ export function Card({
   const s = useStyles();
   if (onPress) {
     return (
-      <Pressable testID={testID} onPress={onPress} style={({ pressed }) => [s.card, pressed && { opacity: 0.8 }, style]}>
+      <PressableScale testID={testID} onPress={onPress} soft style={[s.card, style]}>
         {children}
-      </Pressable>
+      </PressableScale>
     );
   }
   return (

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Linking, Pressable, ScrollView, Text as RNText, View } from "react-native";
+import { Linking, ScrollView, Text as RNText, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenHeader } from "@/src/components/ScreenHeader";
 import { Sheet } from "@/src/components/Sheet";
 import { LeaseSheet, LeaseTarget, ReminderSheet, ReminderTarget } from "@/src/components/ActionSheets";
-import { Button, Card, ErrorBox, SectionTitle, Spinner, StatusPill } from "@/src/components/ui";
+import { Button, Card, ErrorBox, SectionTitle, Spinner, StatusPill, PressableScale } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
 import { waLink } from "@/src/lib/messages";
@@ -120,9 +120,9 @@ export default function TenantDetail() {
                   <RNText style={s.muted}>{rupiah(p.amount)} · jatuh tempo {dateLabel(p.due_date + "T00:00:00")}</RNText>
                 </View>
                 {p.status === "lunas" ? (
-                  <Pressable onLongPress={() => markUnpaid.mutate(p.id)} testID={`payment-status-${p.id}`}>
+                  <PressableScale onLongPress={() => markUnpaid.mutate(p.id)} testID={`payment-status-${p.id}`}>
                     <StatusPill label="LUNAS ✓" tone="success" />
-                  </Pressable>
+                  </PressableScale>
                 ) : (
                   <StatusPill label={p.days_late > 0 ? `TELAT ${p.days_late} HR` : "BELUM BAYAR"} tone={p.days_late > 0 ? "error" : "warning"} testID={`payment-status-${p.id}`} />
                 )}
