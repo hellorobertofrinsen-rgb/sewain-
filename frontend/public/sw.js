@@ -1,4 +1,4 @@
-// Sewain service worker — makes the web app installable and quick to reopen.
+// SewAIn service worker — makes the web app installable and quick to reopen.
 // Strategy: build assets (content-hashed) are cache-first; the app shell is
 // network-first with an offline fallback; API calls always go to the network.
 const CACHE = "sewain-v1";

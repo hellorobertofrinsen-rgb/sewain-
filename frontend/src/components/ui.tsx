@@ -12,9 +12,11 @@ import {
   ViewStyle,
 } from "react-native";
 import Animated, { useReducedMotion } from "react-native-reanimated";
-import { fonts, makeStyles, radius, spacing, useTheme, withAlpha } from "@/src/theme";
+import { cardShadow, fonts, makeStyles, radius, spacing, useTheme, withAlpha } from "@/src/theme";
 import { CSS_EASE_OUT, DURATION, PRESS_SCALE, PRESS_SCALE_SOFT, STATE_TRANSITION } from "@/src/motion";
 import { Icon, IconName } from "./Icon";
+import { Illustration, IllustrationName } from "./Illustration";
+import { t } from "@/src/lib/i18n";
 
 // ------------------------------ PressableScale ---------------------------------
 // Every tappable thing in the app. Feedback lands on press-in (finger down), not on
@@ -40,7 +42,7 @@ export function PressableScale({
 }: Omit<PressableProps, "style" | "children"> & {
   style?: StyleProp<ViewStyle>;
   soft?: boolean; // large surfaces (cards) scale less
-  role?: "button" | "link" | "tab";
+  role?: "button" | "link" | "tab" | "checkbox";
   children?: React.ReactNode;
 }) {
   const reduced = useReducedMotion();
@@ -69,6 +71,8 @@ export function PressableScale({
 }
 
 // --------------------------------- Button -----------------------------------
+// Pill-shaped. Primary is solid brand blue; secondary is a soft blue tint;
+// ghost is a white pill with a hairline (for use on the grey page or white cards).
 
 export function Button({
   title,
@@ -91,9 +95,9 @@ export function Button({
   testID?: string;
   style?: any;
 }) {
-  const { colors } = useTheme();
   const s = useStyles();
   const disabledAll = disabled || loading;
+  const fg = s[`${variant}Text`].color as string;
   return (
     <PressableScale
       testID={testID}
@@ -109,15 +113,12 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator
-          size="small"
-          color={variant === "primary" ? colors.onBrandPrimary : colors.onSurfaceSecondary}
-        />
+        <ActivityIndicator size="small" color={fg} />
       ) : (
         <>
-          {icon ? <Icon name={icon} size={size === "sm" ? 14 : 16} color={s[`${variant}Text`].color} /> : null}
+          {icon ? <Icon name={icon} size={size === "sm" ? 15 : 18} color={fg} /> : null}
           {title ? (
-            <RNText style={[s.btnText, s[`${variant}Text`], size === "sm" && { fontSize: 12 }]}>
+            <RNText style={[s.btnText, s[`${variant}Text`], size === "sm" && { fontSize: 14 }, size === "lg" && { fontSize: 17 }]}>
               {title}
             </RNText>
           ) : null}
@@ -140,7 +141,7 @@ export function Field({
 }) {
   const s = useStyles();
   return (
-    <View style={{ gap: 6 }}>
+    <View style={{ gap: 8 }}>
       {label ? <RNText style={s.label}>{label}</RNText> : null}
       {children}
       {hint ? <RNText style={s.hint}>{hint}</RNText> : null}
@@ -150,77 +151,83 @@ export function Field({
 
 export function Input(props: React.ComponentProps<typeof TextInput> & { testID?: string }) {
   const s = useStyles();
-  return (
-    <TextInput
-      placeholderTextColor="#71717A"
-      {...props}
-      style={[s.input, props.style]}
-    />
-  );
+  const { colors } = useTheme();
+  return <TextInput placeholderTextColor={colors.muted} {...props} style={[s.input, props.style]} />;
 }
 
 export function Textarea(props: React.ComponentProps<typeof TextInput> & { testID?: string }) {
   const s = useStyles();
-  return (
-    <TextInput
-      multiline
-      placeholderTextColor="#71717A"
-      {...props}
-      style={[s.input, s.textarea, props.style]}
-    />
-  );
+  const { colors } = useTheme();
+  return <TextInput multiline placeholderTextColor={colors.muted} {...props} style={[s.input, s.textarea, props.style]} />;
 }
 
 export function SwitchRow({
   label,
+  sub,
   value,
   onChange,
   testID,
 }: {
   label: string;
+  sub?: string;
   value: boolean;
   onChange: (v: boolean) => void;
   testID?: string;
 }) {
   const { colors } = useTheme();
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 44 }}>
-      <RNText style={{ color: colors.onSurfaceTertiary, fontFamily: fonts.regular, fontSize: 14 }}>{label}</RNText>
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 48, gap: spacing.md }}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <RNText style={{ color: colors.onSurface, ...fonts.regular, fontSize: 16 }}>{label}</RNText>
+        {sub ? <RNText style={{ color: colors.muted, ...fonts.regular, fontSize: 13.5, lineHeight: 18 }}>{sub}</RNText> : null}
+      </View>
       <Switch
         testID={testID}
         value={value}
         onValueChange={onChange}
-        trackColor={{ false: colors.surfaceTertiary, true: withAlpha(colors.success, 0.5) }}
-        thumbColor={value ? colors.success : colors.brandSecondary}
+        trackColor={{ false: colors.borderStrong, true: colors.success }}
+        thumbColor="#FFFFFF"
+        {...({ activeThumbColor: "#FFFFFF" } as any)}
       />
     </View>
   );
 }
 
 // ---------------------------------- Chips ------------------------------------
-// Filter chips are chrome: one horizontal scroller, fixed 36pt height,
-// flexShrink 0, selection changes color/border only.
+// Filter chips are chrome: one horizontal scroller, fixed height, flexShrink 0,
+// selection changes color only.
 
 export function Chip({
   label,
   active,
   onPress,
   testID,
+  check,
 }: {
   label: string;
   active: boolean;
   onPress?: () => void;
   testID?: string;
+  /** Checklist chip (several can be on): shows a tick and reads as a checkbox. */
+  check?: boolean;
 }) {
   const s = useStyles();
+  const { colors } = useTheme();
   return (
     <PressableScale
       testID={testID}
       onPress={onPress}
-      accessibilityState={{ selected: active }}
-      style={[STATE_TRANSITION, s.chip, active && s.chipActive]}
+      role={check ? "checkbox" : "button"}
+      accessibilityState={check ? { checked: active } : { selected: active }}
+      {...((check ? { "aria-checked": active } : { "aria-pressed": active }) as any)}
+      style={[STATE_TRANSITION, s.chip, check && s.chipCheck, active && (check ? s.chipCheckOn : s.chipActive)]}
     >
-      <RNText style={[s.chipText, active && s.chipTextActive]} numberOfLines={1}>
+      {check ? (
+        <View style={[s.tick, active && s.tickOn]}>
+          {active ? <Icon name="check" size={11} color={colors.onBrandPrimary} strokeWidth={3} /> : null}
+        </View>
+      ) : null}
+      <RNText style={[s.chipText, active && (check ? s.chipTextCheckOn : s.chipTextActive)]} numberOfLines={1}>
         {label}
       </RNText>
     </PressableScale>
@@ -270,58 +277,159 @@ export function Card({
   );
 }
 
+// ------------------------------ Grouped lists --------------------------------
+// iOS-style inset grouped list for detail screens: a white rounded block of rows
+// separated by inset hairlines, with an optional small header above it.
+
+export function ListGroup({ title, children, footer, testID }: { title?: string; children: React.ReactNode; footer?: string; testID?: string }) {
+  const s = useStyles();
+  const rows = React.Children.toArray(children).filter(Boolean);
+  return (
+    <View testID={testID} style={{ gap: 8 }}>
+      {title ? <RNText style={s.groupTitle}>{title}</RNText> : null}
+      <View style={s.group}>
+        {rows.map((row, i) => (
+          <View key={i}>
+            {i > 0 ? <View style={s.groupDivider} /> : null}
+            {row}
+          </View>
+        ))}
+      </View>
+      {footer ? <RNText style={s.groupFooter}>{footer}</RNText> : null}
+    </View>
+  );
+}
+
+export function ListRow({
+  label,
+  value,
+  sub,
+  icon,
+  tone = "neutral",
+  onPress,
+  right,
+  testID,
+  destructive,
+}: {
+  label: string;
+  value?: string | null;
+  sub?: string | null;
+  icon?: IconName;
+  tone?: Tone;
+  onPress?: () => void;
+  right?: React.ReactNode;
+  testID?: string;
+  destructive?: boolean;
+}) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const body = (
+    <>
+      {icon ? <IconCircle icon={icon} tone={tone} size={34} /> : null}
+      <View style={s.rowText}>
+        <RNText style={[s.rowLabel, destructive && { color: colors.error }]}>{label}</RNText>
+        {sub ? <RNText style={s.rowSub}>{sub}</RNText> : null}
+      </View>
+      {value ? <RNText style={s.rowValue} numberOfLines={1}>{value}</RNText> : null}
+      {right}
+      {onPress ? <Icon name="chevron-right" size={18} color={colors.borderStrong} /> : null}
+    </>
+  );
+  if (onPress) {
+    return (
+      <PressableScale soft testID={testID} onPress={onPress} style={s.row}>
+        {body}
+      </PressableScale>
+    );
+  }
+  return (
+    <View testID={testID} style={s.row}>
+      {body}
+    </View>
+  );
+}
+
+// ------------------------------ Icon circle ----------------------------------
+
+export function IconCircle({ icon, tone = "brand", size = 40 }: { icon: IconName; tone?: Tone; size?: number }) {
+  const { colors } = useTheme();
+  const tc = toneColors(colors, tone);
+  return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: tc.bg, alignItems: "center", justifyContent: "center" }}>
+      <Icon name={icon} size={Math.round(size * 0.48)} color={tc.fg} />
+    </View>
+  );
+}
+
 // -------------------------------- StatusPill ---------------------------------
 
 export type Tone = "success" | "warning" | "error" | "info" | "neutral" | "brand";
 
-export function StatusPill({ label, tone = "neutral", testID }: { label: string; tone?: Tone; testID?: string }) {
+export function toneColors(colors: ReturnType<typeof useTheme>["colors"], tone: Tone): { bg: string; fg: string } {
+  switch (tone) {
+    case "success":
+      return { bg: withAlpha(colors.success, 0.12), fg: colors.success };
+    case "warning":
+      return { bg: withAlpha("#E8A33D", 0.18), fg: colors.warning };
+    case "error":
+      return { bg: withAlpha(colors.error, 0.11), fg: colors.error };
+    case "info":
+      return { bg: withAlpha(colors.info, 0.11), fg: colors.info };
+    case "brand":
+      return { bg: colors.brandTertiary, fg: colors.onBrandTertiary };
+    default:
+      return { bg: colors.surfaceTertiary, fg: colors.onSurfaceSecondary };
+  }
+}
+
+/** `solid`: white backing for use on top of photos, where a soft tint would vanish. */
+export function StatusPill({ label, tone = "neutral", testID, solid }: { label: string; tone?: Tone; testID?: string; solid?: boolean }) {
   const { colors } = useTheme();
-  const map: Record<Tone, { bg: string; fg: string }> = {
-    success: { bg: withAlpha(colors.success, 0.16), fg: colors.success },
-    warning: { bg: withAlpha(colors.warning, 0.16), fg: colors.warning },
-    error: { bg: withAlpha(colors.error, 0.16), fg: colors.error },
-    info: { bg: withAlpha(colors.info, 0.16), fg: colors.info },
-    neutral: { bg: colors.surfaceTertiary, fg: colors.onSurfaceTertiary },
-    brand: { bg: colors.brandPrimary, fg: colors.onBrandPrimary },
-  };
-  const t = map[tone];
+  const tc = toneColors(colors, tone);
   return (
-    <View testID={testID} style={{ backgroundColor: t.bg, borderRadius: radius.pill, paddingHorizontal: 9, paddingVertical: 3, alignSelf: "flex-start" }}>
-      <RNText style={{ color: t.fg, fontSize: 11, fontFamily: fonts.semibold, letterSpacing: 0.2 }}>{label}</RNText>
+    <View testID={testID} style={[{ backgroundColor: solid ? "rgba(255,255,255,0.95)" : tc.bg, borderRadius: radius.pill, paddingHorizontal: 11, paddingVertical: 5, alignSelf: "flex-start", maxWidth: "100%" }, solid && cardShadow]}>
+      <RNText style={{ color: tc.fg, fontSize: 12.5, ...fonts.semibold }} numberOfLines={1}>{label}</RNText>
     </View>
   );
 }
 
 // -------------------------------- Misc ---------------------------------------
 
-export function SectionTitle({ children, style }: { children: React.ReactNode; style?: any }) {
+export function SectionTitle({ children, style, right }: { children: React.ReactNode; style?: any; right?: React.ReactNode }) {
   const s = useStyles();
+  if (right) {
+    return (
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }}>
+        <RNText style={[s.sectionTitle, style]}>{children}</RNText>
+        {right}
+      </View>
+    );
+  }
   return <RNText style={[s.sectionTitle, style]}>{children}</RNText>;
 }
 
 export function EmptyState({
   icon,
+  art,
   title,
   subtitle,
   action,
   testID,
 }: {
-  icon: IconName;
+  icon?: IconName;
+  art?: IllustrationName;
   title: string;
   subtitle?: string;
   action?: React.ReactNode;
   testID?: string;
 }) {
-  const { colors } = useTheme();
   const s = useStyles();
   return (
     <View testID={testID} style={s.empty}>
-      <View style={s.emptyIcon}>
-        <Icon name={icon} size={26} color={colors.onSurfaceSecondary} />
-      </View>
+      {art ? <Illustration name={art} /> : icon ? <IconCircle icon={icon} tone="brand" size={64} /> : null}
       <RNText style={s.emptyTitle}>{title}</RNText>
       {subtitle ? <RNText style={s.emptySubtitle}>{subtitle}</RNText> : null}
-      {action ? <View style={{ marginTop: spacing.lg }}>{action}</View> : null}
+      {action ? <View style={{ marginTop: spacing.md }}>{action}</View> : null}
     </View>
   );
 }
@@ -331,7 +439,7 @@ export function Spinner({ label }: { label?: string }) {
   const s = useStyles();
   return (
     <View style={s.spinner} testID={label ? "spinner-labeled" : "spinner"}>
-      <ActivityIndicator color={colors.onSurfaceSecondary} />
+      <ActivityIndicator color={colors.brandPrimary} />
       {label ? <RNText style={s.hint}>{label}</RNText> : null}
     </View>
   );
@@ -341,10 +449,10 @@ export function ErrorBox({ message, onRetry }: { message: string; onRetry?: () =
   const s = useStyles();
   return (
     <View style={s.errorBox} testID="error-box">
-      <Icon name="alert" size={16} color={s.errorText.color} />
+      <Icon name="alert" size={18} color={s.errorText.color as string} />
       <RNText style={s.errorText}>{message}</RNText>
       {onRetry ? (
-        <Button title="Coba lagi" variant="ghost" size="sm" onPress={onRetry} testID="error-retry-button" />
+        <Button title={t("Coba lagi")} variant="ghost" size="sm" onPress={onRetry} testID="error-retry-button" />
       ) : null}
     </View>
   );
@@ -356,87 +464,86 @@ const useStyles = makeStyles((colors) => ({
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.sm,
-    borderRadius: radius.md,
-    minHeight: 48,
-    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    minHeight: 50,
+    paddingHorizontal: 22,
     paddingVertical: 12,
   },
-  btnSm: { minHeight: 36, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.sm },
-  btnLg: { minHeight: 54, borderRadius: radius.md + 2 },
+  btnSm: { minHeight: 38, paddingHorizontal: 16, paddingVertical: 8, gap: 6 },
+  btnLg: { minHeight: 56, paddingHorizontal: 26 },
   primary: { backgroundColor: colors.brandPrimary },
-  secondary: { backgroundColor: colors.surfaceTertiary },
-  ghost: { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.border },
-  danger: { backgroundColor: "transparent", borderWidth: 1, borderColor: withAlpha(colors.error, 0.5) },
+  secondary: { backgroundColor: colors.brandTertiary },
+  ghost: { backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.borderStrong },
+  danger: { backgroundColor: withAlpha(colors.error, 0.1) },
   primaryText: { color: colors.onBrandPrimary },
-  secondaryText: { color: colors.onSurfaceTertiary },
-  ghostText: { color: colors.onSurfaceTertiary },
+  secondaryText: { color: colors.onBrandTertiary },
+  ghostText: { color: colors.onSurface },
   dangerText: { color: colors.error },
-  btnText: { fontFamily: fonts.semibold, fontSize: 14 },
-  label: { color: colors.onSurfaceSecondary, fontFamily: fonts.medium, fontSize: 13 },
-  hint: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12 },
+  btnText: { ...fonts.semibold, fontSize: 16 },
+  label: { color: colors.onSurface, ...fonts.semibold, fontSize: 14 },
+  hint: { color: colors.muted, ...fonts.regular, fontSize: 13, lineHeight: 18 },
   input: {
     backgroundColor: colors.surfaceTertiary,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
+    borderColor: "transparent",
+    borderRadius: 14,
     paddingHorizontal: spacing.md,
-    minHeight: 46,
+    minHeight: 50,
     color: colors.onSurface,
-    fontFamily: fonts.regular,
-    fontSize: 14,
+    ...fonts.regular,
+    fontSize: 16,
   },
-  textarea: { minHeight: 100, paddingTop: 10, textAlignVertical: "top", lineHeight: 20 },
+  textarea: { minHeight: 110, paddingTop: 13, textAlignVertical: "top", lineHeight: 22 },
   chip: {
-    height: 36,
+    height: 38,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surfaceTertiary,
-    paddingHorizontal: 14,
+    backgroundColor: colors.surfaceSecondary,
+    paddingHorizontal: 16,
     justifyContent: "center",
     alignItems: "center",
     flexShrink: 0,
   },
   chipActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
-  chipText: { color: colors.onSurfaceSecondary, fontFamily: fonts.medium, fontSize: 13 },
-  chipTextActive: { color: colors.onBrandPrimary, fontFamily: fonts.semibold },
+  chipText: { color: colors.onSurfaceSecondary, ...fonts.medium, fontSize: 14 },
+  chipTextActive: { color: colors.onBrandPrimary, ...fonts.semibold },
+  chipCheck: { flexDirection: "row", gap: 8, paddingLeft: 12 },
+  chipCheckOn: { backgroundColor: colors.brandTertiary, borderColor: colors.brandPrimary },
+  chipTextCheckOn: { color: colors.onBrandTertiary, ...fonts.semibold },
+  tick: {
+    width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: colors.borderStrong,
+    alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceSecondary,
+  },
+  tickOn: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   chipRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.xs, alignItems: "center" },
   card: {
     backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
     padding: spacing.lg,
+    ...cardShadow,
   },
-  sectionTitle: {
-    color: colors.onSurface,
-    fontFamily: fonts.semibold,
-    fontSize: 13,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  empty: { alignItems: "center", paddingVertical: spacing.xxxl, paddingHorizontal: spacing.xl, gap: spacing.sm },
-  emptyIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.surfaceTertiary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.xs,
-  },
-  emptyTitle: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 16, textAlign: "center" },
-  emptySubtitle: { color: colors.muted, fontFamily: fonts.regular, fontSize: 13, textAlign: "center", lineHeight: 19 },
+  group: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, overflow: "hidden", ...cardShadow },
+  groupTitle: { color: colors.muted, ...fonts.semibold, fontSize: 13, letterSpacing: 0.4, textTransform: "uppercase", paddingHorizontal: spacing.lg },
+  groupFooter: { color: colors.muted, ...fonts.regular, fontSize: 13, lineHeight: 18, paddingHorizontal: spacing.lg },
+  groupDivider: { height: 1, backgroundColor: colors.divider, marginLeft: spacing.lg },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: 14, minHeight: 54 },
+  rowLabel: { color: colors.onSurface, ...fonts.regular, fontSize: 16 },
+  rowSub: { color: colors.muted, ...fonts.regular, fontSize: 13, lineHeight: 18 },
+  rowText: { flexGrow: 1, flexShrink: 1, minWidth: 96, gap: 2 },
+  rowValue: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 16, flexShrink: 1, textAlign: "right" },
+  sectionTitle: { color: colors.onSurface, ...fonts.bold, fontSize: 22, letterSpacing: -0.3 },
+  empty: { alignItems: "center", paddingVertical: spacing.xxl, paddingHorizontal: spacing.xl, gap: spacing.sm },
+  emptyTitle: { color: colors.onSurface, ...fonts.bold, fontSize: 19, textAlign: "center", marginTop: spacing.sm },
+  emptySubtitle: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15, textAlign: "center", lineHeight: 22, maxWidth: 380 },
   spinner: { alignItems: "center", justifyContent: "center", padding: spacing.xxxl, gap: spacing.md },
   errorBox: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    backgroundColor: withAlpha(colors.error, 0.12),
-    borderColor: withAlpha(colors.error, 0.4),
-    borderWidth: 1,
-    borderRadius: radius.md,
+    backgroundColor: withAlpha(colors.error, 0.08),
+    borderRadius: 16,
     padding: spacing.md,
   },
-  errorText: { color: colors.error, fontFamily: fonts.medium, fontSize: 13, flex: 1 },
+  errorText: { color: colors.error, ...fonts.medium, fontSize: 14, flex: 1, lineHeight: 20 },
 }));

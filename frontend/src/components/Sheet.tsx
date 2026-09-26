@@ -16,6 +16,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { fonts, makeStyles, radius, spacing } from "@/src/theme";
 import { DURATION, EASE_OUT, EASE_SHEET, SPRING_SETTLE } from "@/src/motion";
+import { t } from "@/src/lib/i18n";
 
 // Where a flick was going if the finger kept decelerating (Apple's exponential decay),
 // so a quick short swipe dismisses and a slow long drag doesn't.
@@ -196,9 +197,10 @@ export function Sheet({
     <Modal visible transparent animationType="none" onRequestClose={requestClose} statusBarTranslucent>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <Animated.View style={[s.backdrop, backdropStyle]} />
-        <Pressable style={{ flex: 1 }} onPress={requestClose} accessibilityLabel="Tutup" />
+        <Pressable style={{ flex: 1 }} onPress={requestClose} accessibilityLabel={t("Tutup")} />
         <Animated.View
           testID={testID}
+          {...({ dataSet: { noPtr: "1" } } as any)}
           onLayout={(e) => {
             sheetH.set(e.nativeEvent.layout.height);
             if (!laidOut.current && !closing.current) {
@@ -210,7 +212,7 @@ export function Sheet({
           style={[s.sheet, { paddingBottom: insets.bottom + spacing.lg }, sheetStyle]}
         >
           <GestureDetector gesture={pan}>
-            <View style={s.dragZone} accessibilityHint="Seret ke bawah untuk menutup">
+            <View style={s.dragZone} accessibilityHint={t("Seret ke bawah untuk menutup")}>
               <View style={s.handle} />
               {shownTitle ? <RNText style={s.title}>{shownTitle}</RNText> : null}
             </View>
@@ -235,33 +237,32 @@ const useStyles = makeStyles((colors) => ({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: "rgba(22,24,29,0.38)",
   },
   sheet: {
     backgroundColor: colors.surfaceSecondary,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
     paddingHorizontal: spacing.lg,
     maxHeight: "88%",
     width: "100%",
     maxWidth: 600, // desktop: a sheet, not a full-width banner
     alignSelf: "center",
   },
-  dragZone: { paddingTop: spacing.sm, paddingBottom: spacing.md, cursor: "grab" as any },
+  dragZone: { paddingTop: spacing.sm, paddingBottom: spacing.lg, cursor: "grab" as any },
   handle: {
     alignSelf: "center",
-    width: 36,
-    height: 4,
-    borderRadius: 2,
+    width: 40,
+    height: 5,
+    borderRadius: 3,
     backgroundColor: colors.borderStrong,
     marginBottom: spacing.md,
   },
   title: {
     color: colors.onSurface,
-    fontFamily: fonts.semibold,
-    fontSize: 17,
+    ...fonts.bold,
+    fontSize: 22,
+    letterSpacing: -0.3,
   },
   scroll: { overscrollBehavior: "contain" } as any,
 }));

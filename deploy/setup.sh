@@ -87,6 +87,7 @@ echo "==> 5/5  Build & menjalankan (pertama kali 5–15 menit, mohon tunggu)"
 cd "$DIR/deploy"
 docker compose up -d --build
 docker image prune -f >/dev/null
+bash "$DIR/deploy/install-cron.sh"
 
 printf "     menunggu app siap"
 for _ in $(seq 1 60); do

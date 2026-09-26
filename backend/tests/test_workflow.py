@@ -86,6 +86,10 @@ def test_patch_lead_preserves_stage_and_match(account):
 
 def test_followup_scheduling_on_today(account):
     lid = account.ok('post', '/leads', {'name': 'Maya'})['id']
+    # Only follow-ups the agent scheduled show up; a new prospect alone is not a guess to act on.
+    assert not [i for i in account.ok('get', '/today')['items'] if i['type'] == 'followup']
+    tomorrow = (today_wib().date() + timedelta(days=1)).isoformat()
+    account.ok('post', f'/leads/{lid}/contacted', {'message': 'Halo', 'next_followup_date': tomorrow})
     assert not [i for i in account.ok('get', '/today')['items'] if i['type'] == 'followup']
     account.ok('post', f'/leads/{lid}/contacted', {'message': 'Halo Maya', 'next_followup_date': today_wib().date().isoformat()})
     items = [i for i in account.ok('get', '/today')['items'] if i['type'] == 'followup']

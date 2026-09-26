@@ -1,51 +1,76 @@
-import React, { useRef, useState } from "react";
-import { Platform, ScrollView, Text as RNText, View, useWindowDimensions } from "react-native";
-import Animated, { FadeOut, LinearTransition, ReduceMotion } from "react-native-reanimated";
+import React, { useState } from "react";
+import { Linking, ScrollView, Text as RNText, View } from "react-native";
+import Animated, { FadeOut, Keyframe, LinearTransition, ReduceMotion } from "react-native-reanimated";
 import { router } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { usesNativeTabs } from "@/src/navigation";
-import { Icon } from "@/src/components/Icon";
+import { Icon, IconName } from "@/src/components/Icon";
+import { Illustration } from "@/src/components/Illustration";
+import { useIsWide } from "@/src/lib/layout";
 import { LogoFull } from "@/src/components/Logo";
 import { Sheet } from "@/src/components/Sheet";
 import { DateInput } from "@/src/components/DateInput";
+import { UnitThumb } from "@/src/components/UnitThumb";
 import { FollowupSheet, FollowupTarget, LeaseSheet, LeaseTarget, ReminderSheet, ReminderTarget } from "@/src/components/ActionSheets";
-import { Button, Card, EmptyState, ErrorBox, Field, SectionTitle, Spinner, StatusPill, PressableScale } from "@/src/components/ui";
+import { Button, Card, ErrorBox, Field, IconCircle, Spinner, StatusPill, PressableScale, Tone } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
 import { usePlan } from "@/src/lib/plan";
-import { dateLabel, dateTimeLabel, greeting, leaseLeftLabel, rupiah, rupiahShort, todayISO } from "@/src/lib/format";
-import { fonts, makeStyles, radius, spacing, useTheme, withAlpha } from "@/src/theme";
+import { useMenu } from "@/src/lib/menu";
+import { t } from "@/src/lib/i18n";
+import { lookingFor, prefSummary, unitKind } from "@/src/lib/unitKinds";
+import { Avatar, MyAvatar } from "@/src/components/Avatar";
+import { OnboardingCard } from "@/src/components/Onboarding";
+import { googleCalendarLink, viewingInviteMessage, waLink } from "@/src/lib/messages";
+import { CalendarActions } from "@/src/components/CalendarActions";
+import {
+  UNIT_STATUS, mainPrice, dateTimeLabel, daysFromNow, greeting, leaseLeftLabel, rupiah,
+  shortDay, todayISO,
+} from "@/src/lib/format";
+import { cardShadow, fonts, makeStyles, spacing, useTheme, withAlpha } from "@/src/theme";
 import { DURATION, EASE_IN_OUT, EASE_OUT } from "@/src/motion";
 
-// Hari Ini is opened many times a day, so the queue does NOT animate in (it should
-// simply be there). When an item is finished it fades out and the rest glide up to
-// close the gap — that prevents a jarring jump, which is worth animating.
-// The fade is opacity-only, so it stays under reduced motion; the reflow (movement) doesn't.
+// Hari Ini: four numbers (all facts: counts of what the agent recorded), then a short
+// preview of Unit, Prospek and Tenant. Tapping a number opens the items behind it
+// with their actions. Nothing here is a guess about what the agent "should" do.
+
+// A finished item fades out and the rest glide up (opacity stays under reduced motion).
 const ITEM_EXIT = FadeOut.duration(180).easing(EASE_OUT).reduceMotion(ReduceMotion.Never);
 const ITEM_REFLOW = LinearTransition.duration(DURATION.reflow).easing(EASE_IN_OUT);
+// Small reward for clearing the last item in a list (only then).
+const ALL_DONE = new Keyframe({
+  0: { opacity: 0, transform: [{ scale: 0.88 }, { translateY: 8 }] },
+  100: { opacity: 1, transform: [{ scale: 1 }, { translateY: 0 }], easing: EASE_OUT },
+}).duration(420);
 
 type QueueItem = any;
 type TodayData = {
   name: string;
   is_demo: boolean;
   units: { total: number; terisi: number; kosong: number; reserved: number; maintenance: number };
-  counts: { followups: number; viewings: number; unpaid_amount: number; unpaid_count: number; leases: number; issues: number; urgent: number; total: number };
+  counts: {
+    followups: number; viewings: number; unpaid_amount: number; unpaid_count: number; leases: number;
+    issues: number; urgent: number; total: number; active_leads: number; todos: number; todos_today: number;
+  };
   items: QueueItem[];
 };
 
-/** One calm sentence summarising the queue — computed locally, no AI call. */
-function summaryLine(c: TodayData["counts"]): string {
-  const parts = [
-    c.followups ? `${c.followups} follow-up` : null,
-    c.viewings ? `${c.viewings} viewing` : null,
-    c.unpaid_count ? `${c.unpaid_count} tagihan (${rupiahShort(c.unpaid_amount)})` : null,
-    c.leases ? `${c.leases} kontrak mau habis` : null,
-    c.issues ? `${c.issues} masalah${c.urgent ? ` (${c.urgent} urgent)` : ""}` : null,
-  ].filter(Boolean);
-  return parts.join(" · ");
-}
+type Focus = null | "followup" | "viewing" | "payment" | "lease";
+const FOCUS: Record<Exclude<Focus, null>, { title: string; types: string[] }> = {
+  followup: { title: "Follow-up terjadwal", types: ["followup"] },
+  viewing: { title: "Viewing", types: ["viewing", "viewing_result"] },
+  payment: { title: "Jatuh tempo", types: ["payment"] },
+  lease: { title: "Kontrak selesai dalam 30 hari", types: ["lease"] },
+};
+
+const QUEUE_ICON: Record<string, { icon: IconName; tone: Tone }> = {
+  followup: { icon: "person", tone: "brand" },
+  viewing: { icon: "calendar-check", tone: "info" },
+  viewing_result: { icon: "eye", tone: "info" },
+  payment: { icon: "wallet", tone: "error" },
+  lease: { icon: "key", tone: "warning" },
+};
 
 export default function TodayScreen() {
   const qc = useQueryClient();
@@ -54,11 +79,9 @@ export default function TodayScreen() {
   const { plan, showUpgrade } = usePlan();
   const s = useStyles();
   const insets = useSafeAreaInsets();
-  const bottomChrome = usesNativeTabs ? insets.bottom : 0;
-  const { width } = useWindowDimensions();
-  const hasSidebar = Platform.OS === "web" && width >= 1024; // desktop: logo + settings live in the sidebar
-  const scrollRef = useRef<ScrollView>(null);
-  const queueY = useRef(0);
+  const hasSidebar = useIsWide(); // desktop: logo, menu and profile live in the sidebar
+  const { openMenu } = useMenu();
+  const [focus, setFocus] = useState<Focus>(null);
   const [followupLead, setFollowupLead] = useState<FollowupTarget | null>(null);
   const [remindPayment, setRemindPayment] = useState<ReminderTarget | null>(null);
   const [lease, setLease] = useState<LeaseTarget | null>(null);
@@ -66,287 +89,401 @@ export default function TodayScreen() {
   const [reschedDate, setReschedDate] = useState(todayISO(1));
   const [reschedTime, setReschedTime] = useState("14:00");
 
-  const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["today"],
-    queryFn: () => api<TodayData>("/today"),
-  });
+  const { data, isLoading, error, refetch } = useQuery({ queryKey: ["today"], queryFn: () => api<TodayData>("/today") });
+  const { data: unitList } = useQuery({ queryKey: ["units", "semua"], queryFn: () => api<any[]>("/units?status=semua") });
+  const { data: leadList } = useQuery({ queryKey: ["leads", "aktif"], queryFn: () => api<any[]>("/leads?status=aktif") });
+  const { data: tenantList } = useQuery({ queryKey: ["tenants"], queryFn: () => api<any[]>("/tenants") });
 
   const invalidateAll = () => {
-    for (const key of ["today", "leads", "lead", "tenants", "maintenance", "units", "plan"]) qc.invalidateQueries({ queryKey: [key] });
+    for (const key of ["today", "leads", "lead", "tenants", "tenant", "maintenance", "units", "plan", "stats"]) qc.invalidateQueries({ queryKey: [key] });
   };
+  const act = (fn: (v: any) => Promise<any>, ok: string) => ({
+    mutationFn: fn,
+    onSuccess: () => {
+      invalidateAll();
+      if (ok) toast(t(ok));
+    },
+    onError: (e: any) => toast(e?.message || t("Gagal. Coba lagi."), "error"),
+  });
 
-  const act = (fn: (v: any) => Promise<any>, ok: string) =>
-    ({
-      mutationFn: fn,
-      onSuccess: () => {
-        invalidateAll();
-        if (ok) toast(ok);
-      },
-      onError: (e: any) => toast(e?.message || "Gagal. Coba lagi.", "error"),
-    });
-
-  const confirmViewing = useMutation(act((id: string) => api(`/viewings/${id}/confirm`, { method: "POST" }), "Viewing dikonfirmasi ✓"));
+  const confirmViewing = useMutation(act((id: string) => api(`/viewings/${id}/confirm`, { method: "POST" }), "Viewing dikonfirmasi"));
   const cancelViewing = useMutation(act((id: string) => api(`/viewings/${id}/cancel`, { method: "POST" }), "Viewing dibatalkan"));
   const viewingNotYet = useMutation(
-    act((id: string) => api(`/viewings/${id}/complete`, { method: "POST", body: { next: "followup" } }), "Dicatat — follow-up lagi 3 hari ke depan"),
+    act((id: string) => api(`/viewings/${id}/complete`, { method: "POST", body: { next: "followup" } }), "Dicatat — follow-up dijadwalkan 3 hari lagi"),
   );
   const reschedMutation = useMutation({
     ...act((v: { id: string; date: string; time: string }) =>
       api(`/viewings/${v.id}/reschedule`, { method: "POST", body: { scheduled_at: `${v.date}T${v.time}:00` } }), "Jadwal viewing diganti"),
     onSettled: () => setReschedule(null),
   });
-  const markPaid = useMutation(act((id: string) => api(`/payments/${id}/mark-paid`, { method: "POST" }), "Lunas ✓"));
-  const startMaint = useMutation(act((id: string) => api(`/maintenance/${id}/start`, { method: "POST" }), ""));
-  const resolveMaint = useMutation(act((id: string) => api(`/maintenance/${id}/resolve`, { method: "POST" }), "Masalah ditandai selesai ✓"));
+  const calendarViewing = useMutation(act((id: string) => api(`/viewings/${id}/calendar`, { method: "POST" }), ""));
+  const markPaid = useMutation(act((id: string) => api(`/payments/${id}/mark-paid`, { method: "POST" }), "Lunas"));
 
   const toNegotiation = async (item: QueueItem) => {
     try {
       await api(`/viewings/${item.viewing_id}/complete`, { method: "POST", body: { next: "negotiation" } });
       invalidateAll();
+      setFocus(null);
       router.push(`/lead/${item.lead_id}?open=negotiation` as any);
     } catch (e: any) {
-      toast(e?.message || "Gagal. Coba lagi.", "error");
+      toast(e?.message || t("Gagal. Coba lagi."), "error");
     }
   };
+  // Opening an action sheet closes the list first (one sheet at a time).
+  const openFrom = (fn: () => void) => {
+    setFocus(null);
+    fn();
+  };
 
-  if (isLoading) return <Spinner label="Menyiapkan hari ini…" />;
-  if (error || !data) return <View style={s.page}><ErrorBox message={(error as any)?.message || "Gagal memuat."} onRetry={refetch} /></View>;
+  if (isLoading) return <Spinner label={t("Menyiapkan hari ini…")} />;
+  if (error || !data) return <View style={s.page}><ErrorBox message={(error as any)?.message || t("Gagal memuat.")} onRetry={refetch} /></View>;
 
-  const { counts, units, items } = data;
-  const statCards = [
-    { v: `${counts.followups}`, l: "Perlu di-follow-up", to: "/leads", testID: "stat-followups" },
-    { v: `${counts.viewings}`, l: "Viewing", to: "/leads", testID: "stat-viewings" },
-    { v: rupiahShort(counts.unpaid_amount), l: "Tagihan belum masuk", to: "/tenants", testID: "stat-unpaid" },
-    { v: `${counts.leases}`, l: "Kontrak habis ≤ 30 hari", to: "/tenants", testID: "stat-leases" },
+  const { counts, items } = data;
+  const money = rupiah(counts.unpaid_amount);
+  const statCards: { v: string; l: string; testID: string; icon: IconName; tone: Tone; onPress: () => void }[] = [
+    { v: `${counts.active_leads}`, l: "Prospek||tab", testID: "stat-leads", icon: "person", tone: "brand", onPress: () => router.push("/leads" as any) },
+    { v: `${counts.viewings}`, l: "Viewing||tab", testID: "stat-viewings", icon: "calendar-check", tone: "info", onPress: () => (counts.viewings ? setFocus("viewing") : router.push("/leads" as any)) },
+    { v: money, l: counts.unpaid_count ? t("Jatuh tempo · {n} tagihan", { n: counts.unpaid_count }) : t("Jatuh tempo"), testID: "stat-unpaid", icon: "wallet", tone: "error", onPress: () => (counts.unpaid_count ? setFocus("payment") : router.push("/tenants" as any)) },
+    { v: `${counts.leases}`, l: "Kontrak selesai dalam 30 hari", testID: "stat-leases", icon: "key", tone: "warning", onPress: () => (counts.leases ? setFocus("lease") : router.push("/tenants" as any)) },
   ];
+
+  const focusItems = focus ? items.filter((i) => FOCUS[focus].types.includes(i.type)) : [];
 
   return (
     <View style={s.root}>
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={{ paddingTop: insets.top, paddingBottom: bottomChrome + spacing.xxxl }}
-        showsVerticalScrollIndicator={false}
-        testID="today-screen"
-      >
+      <ScrollView contentContainerStyle={{ paddingBottom: spacing.xxxl }} showsVerticalScrollIndicator={false} testID="today-screen">
         {hasSidebar ? (
           <View style={{ height: spacing.xl }} />
         ) : (
-          <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
-            <LogoFull size={22} bg={colors.surface} />
-            <PressableScale testID="header-settings-button" onPress={() => router.push("/settings")} style={s.iconBtn} accessibilityLabel="Pengaturan">
-              <Icon name="sliders" size={20} color={colors.onSurfaceSecondary} />
+          <View style={[s.header, { paddingTop: insets.top + spacing.md }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+              <PressableScale testID="header-menu-button" onPress={openMenu} style={s.iconBtn} accessibilityLabel={t("Menu")}>
+                <Icon name="menu" size={22} color={colors.onSurface} />
+              </PressableScale>
+              <LogoFull size={30} />
+            </View>
+            <PressableScale testID="header-profile-button" onPress={() => router.push("/profile" as any)} accessibilityLabel={t("Profil")} style={s.avatarBtn}>
+              <MyAvatar size={44} />
             </PressableScale>
           </View>
         )}
 
         <View style={s.content}>
-          <RNText style={s.greeting}>
+          <RNText style={s.greeting} accessibilityRole="header">
             {greeting()}, {data.name}
           </RNText>
-          <RNText style={s.headline}>
-            {counts.total > 0 ? `Ada ${counts.total} hal yang perlu diberesin.` : "Semua beres hari ini."}
-          </RNText>
-          {counts.total > 0 ? <RNText style={s.summary}>{summaryLine(counts)}</RNText> : null}
 
           {plan && plan.hidden_units > 0 ? (
-            <PressableScale soft testID="hidden-units-banner" onPress={() => showUpgrade("hidden_units")} style={[s.banner]}>
-              <Icon name="alert" size={16} color={colors.warning} />
+            <PressableScale soft testID="hidden-units-banner" onPress={() => showUpgrade("hidden_units")} style={s.banner}>
+              <IconCircle icon="lock" tone="warning" size={36} />
               <RNText style={s.bannerText}>
                 {plan.hidden_units} unit disembunyikan karena paket Free. Upgrade untuk menampilkannya lagi.
               </RNText>
             </PressableScale>
           ) : null}
 
-          {units.total === 0 ? (
-            <Card style={{ marginTop: spacing.lg }}>
-              <RNText style={s.setupTitle}>Mulai dari unit pertamamu</RNText>
-              <RNText style={s.setupSub}>Catat unit yang kamu pasarkan, lalu calon penyewanya. Sewain yang ingatkan siapa harus di-follow-up.</RNText>
-              <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md, flexWrap: "wrap" }}>
-                <Button title="Tambah Unit" onPress={() => router.push("/setup")} testID="today-setup-button" />
-                <Button title="Tambah Calon Penyewa" variant="ghost" onPress={() => router.push("/lead/new" as any)} testID="today-new-lead-button" />
-              </View>
-            </Card>
-          ) : (
-            <>
+          <OnboardingCard units={unitList || []} leadsCount={counts.active_leads} tenantsCount={(tenantList || []).length} />
+
+          <>
               <View style={s.statGrid}>
                 {statCards.map((c) => (
-                  <PressableScale soft key={c.testID} testID={c.testID} onPress={() => router.push(c.to as any)} style={[s.statCard]}>
-                    <RNText style={s.statValue} numberOfLines={1}>{c.v}</RNText>
-                    <RNText style={s.statLabel}>{c.l}</RNText>
+                  <PressableScale soft key={c.testID} testID={c.testID} onPress={c.onPress} style={[s.statCard, hasSidebar && s.statCardWide]}>
+                    <View style={s.statTop}>
+                      <IconCircle icon={c.icon} tone={c.tone} size={36} />
+                      <Icon name="chevron-right" size={16} color={colors.borderStrong} />
+                    </View>
+                    <RNText style={[s.statValue, c.v.length > 8 && s.statValueLong]} numberOfLines={1}>{c.v}</RNText>
+                    <RNText style={s.statLabel}>{t(c.l)}</RNText>
                   </PressableScale>
                 ))}
               </View>
 
-              {counts.total > 2 ? (
-                <Button title="Beresin satu-satu" onPress={() => scrollRef.current?.scrollTo({ y: queueY.current - 8, animated: true })} testID="beresin-button" style={{ marginTop: spacing.md }} />
+              {counts.followups > 0 ? (
+                <PressableScale soft testID="today-followups" onPress={() => setFocus("followup")} style={s.rowCard}>
+                  <IconCircle icon="calendar-check" tone="brand" size={40} />
+                  <RNText style={s.rowCardText}>{counts.followups} follow-up yang kamu jadwalkan hari ini</RNText>
+                  <Icon name="chevron-right" size={18} color={colors.muted} />
+                </PressableScale>
+              ) : null}
+              {counts.todos > 0 ? (
+                <PressableScale soft testID="today-todos" onPress={() => router.push("/todo" as any)} style={s.rowCard}>
+                  <IconCircle icon="list-check" tone="warning" size={40} />
+                  <RNText style={s.rowCardText}>
+                    {counts.todos_today
+                      ? t("{n} to-do dijadwalkan hari ini", { n: counts.todos_today })
+                      : t("{n} to-do belum selesai", { n: counts.todos })}
+                  </RNText>
+                  <Icon name="chevron-right" size={18} color={colors.muted} />
+                </PressableScale>
               ) : null}
 
-              <PressableScale soft testID="unit-summary-card" onPress={() => router.push("/units" as any)} style={[s.unitCard]}>
-                <View style={{ flex: 1 }}>
-                  <RNText style={s.unitCardTitle}>Unit</RNText>
-                  <RNText style={s.unitCardSub}>
-                    {units.total} total · {units.terisi} terisi · {units.kosong} kosong
-                  </RNText>
-                  <View style={s.barWrap}>
-                    <View style={[s.barFill, { flex: Math.max(units.terisi, 0.15), backgroundColor: colors.success }]} />
-                    <View style={[s.barFill, { flex: Math.max(units.kosong, 0.05), backgroundColor: colors.borderStrong }]} />
-                    {units.reserved + units.maintenance > 0 ? (
-                      <View style={[s.barFill, { flex: units.reserved + units.maintenance, backgroundColor: colors.warning }]} />
-                    ) : null}
-                  </View>
-                </View>
-                <Icon name="chevron-right" size={18} color={colors.muted} />
-              </PressableScale>
-            </>
-          )}
-
-          <View onLayout={(e) => (queueY.current = e.nativeEvent.layout.y + (insets.top || 0))} style={{ marginTop: spacing.xl, gap: spacing.md }}>
-            {items.length > 0 ? <SectionTitle>Antrean hari ini</SectionTitle> : null}
-            {items.map((item) => (
-              <Animated.View key={`${item.type}-${item.id}`} exiting={ITEM_EXIT} layout={ITEM_REFLOW}>
-                {item.type === "followup" ? (
-                  <Card testID={`queue-followup-${item.id}`}>
-                    <View style={s.cardHead}>
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <RNText style={s.itemTitle}>{item.name}</RNText>
-                        <RNText style={s.itemSub}>
-                          {[item.unit_type, item.budget_max ? `Budget ${rupiahShort(item.budget_max)}` : null].filter(Boolean).join(" · ") || "Calon penyewa"}
-                        </RNText>
-                      </View>
-                      <StatusPill label={item.status === "negotiation" ? "Negosiasi" : "Follow-up"} tone="warning" testID={`pill-followup-${item.id}`} />
-                    </View>
-                    <RNText style={s.reason}>{item.reason}</RNText>
-                    {item.note ? <RNText style={s.note} numberOfLines={2}>{item.note}</RNText> : null}
-                    {item.unit ? (
-                      <RNText style={s.matchLine}>
-                        Cocok: <RNText style={s.matchUnit}>{item.unit.name}</RNText> · {item.unit.unit_type} · {rupiahShort(item.unit.monthly_price)}/bln
-                      </RNText>
-                    ) : null}
-                    <View style={s.actions}>
-                      <Button title="Follow-up" size="sm" icon="send" onPress={() => setFollowupLead({ ...item, id: item.lead_id })} testID={`followup-open-${item.id}`} />
-                      <Button title="Detail" variant="ghost" size="sm" onPress={() => router.push(`/lead/${item.lead_id}` as any)} testID={`followup-detail-${item.id}`} />
-                    </View>
-                  </Card>
-                ) : null}
-
-                {item.type === "viewing" ? (
-                  <Card testID={`queue-viewing-${item.id}`}>
-                    <View style={s.cardHead}>
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <RNText style={s.itemTitle}>Viewing {item.name}</RNText>
-                        <RNText style={s.itemSub}>Unit {item.unit_name} · {dateTimeLabel(item.scheduled_at)}</RNText>
-                      </View>
-                      <StatusPill label={item.status === "menunggu" ? "Belum dikonfirmasi" : "Terjadwal"} tone={item.status === "menunggu" ? "warning" : "info"} testID={`pill-viewing-${item.id}`} />
-                    </View>
-                    <View style={s.actions}>
-                      {item.status === "menunggu" ? (
-                        <Button title="Konfirmasi" size="sm" onPress={() => confirmViewing.mutate(item.viewing_id)} testID={`viewing-confirm-${item.id}`} />
-                      ) : null}
-                      <Button title="Ganti Jadwal" variant="ghost" size="sm" onPress={() => { setReschedule(item); setReschedDate(todayISO(1)); setReschedTime("14:00"); }} testID={`viewing-reschedule-${item.id}`} />
-                      <Button title="Batal" variant="ghost" size="sm" onPress={() => cancelViewing.mutate(item.viewing_id)} testID={`viewing-cancel-${item.id}`} />
-                    </View>
-                  </Card>
-                ) : null}
-
-                {item.type === "viewing_result" ? (
-                  <Card testID={`queue-viewing-result-${item.id}`} style={{ borderColor: withAlpha(colors.info, 0.4) }}>
-                    <RNText style={s.itemTitle}>Gimana hasil viewing {item.name}?</RNText>
-                    <RNText style={s.itemSub}>Unit {item.unit_name} · {dateTimeLabel(item.scheduled_at)}</RNText>
-                    <View style={s.actions}>
-                      <Button title="Lanjut Negosiasi" size="sm" onPress={() => toNegotiation(item)} testID={`viewing-nego-${item.id}`} />
-                      <Button title="Belum cocok" variant="ghost" size="sm" onPress={() => viewingNotYet.mutate(item.viewing_id)} testID={`viewing-notyet-${item.id}`} />
-                      <Button title="Detail" variant="ghost" size="sm" onPress={() => router.push(`/lead/${item.lead_id}` as any)} testID={`viewing-detail-${item.id}`} />
-                    </View>
-                  </Card>
-                ) : null}
-
-                {item.type === "payment" ? (
-                  <Card testID={`queue-payment-${item.id}`}>
-                    <View style={s.cardHead}>
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <RNText style={s.itemTitle}>{item.name} · {item.unit_name}</RNText>
-                        <RNText style={s.itemSub}>
-                          {rupiah(item.amount)} · jatuh tempo {dateLabel(item.due_date + "T00:00:00")}
-                        </RNText>
-                      </View>
-                      <StatusPill label={item.days_late > 0 ? `TELAT ${item.days_late} HARI` : "BELUM BAYAR"} tone="error" testID={`pill-payment-${item.id}`} />
-                    </View>
-                    <View style={s.actions}>
-                      <Button title="Tandai Lunas" size="sm" onPress={() => markPaid.mutate(item.payment_id)} testID={`payment-paid-${item.id}`} />
-                      <Button title="Ingatkan" variant="ghost" size="sm" onPress={() => setRemindPayment({ ...item, id: item.payment_id })} testID={`payment-remind-${item.id}`} />
-                    </View>
-                  </Card>
-                ) : null}
-
-                {item.type === "lease" ? (
-                  <Card testID={`queue-lease-${item.id}`}>
-                    <View style={s.cardHead}>
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <RNText style={s.itemTitle}>{item.name} · {item.unit_name}</RNText>
-                        <RNText style={s.itemSub}>Kontrak sampai {dateLabel(item.end_date + "T00:00:00")}</RNText>
-                      </View>
-                      <StatusPill label={leaseLeftLabel(item.days_left)} tone={item.days_left <= 7 ? "error" : "warning"} testID={`pill-lease-${item.id}`} />
-                    </View>
-                    <View style={s.actions}>
-                      <Button title="Perpanjang / Kabari" size="sm" onPress={() => setLease({ ...item, id: item.tenant_id })} testID={`lease-open-${item.id}`} />
-                      <Button title="Detail" variant="ghost" size="sm" onPress={() => router.push(`/tenant/${item.tenant_id}` as any)} testID={`lease-detail-${item.id}`} />
-                    </View>
-                  </Card>
-                ) : null}
-
-                {item.type === "maintenance" ? (
-                  <Card testID={`queue-maintenance-${item.id}`} style={item.urgent ? { borderColor: withAlpha(colors.error, 0.45) } : undefined}>
-                    <View style={s.cardHead}>
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <RNText style={s.itemTitle}>{item.unit_name ? `Unit ${item.unit_name}` : "Area umum"} · {item.category}</RNText>
-                        <RNText style={s.itemSub}>{item.description}</RNText>
-                      </View>
-                      {item.urgent ? <StatusPill label="URGENT" tone="error" testID={`pill-urgent-${item.id}`} /> : null}
-                    </View>
-                    <View style={s.actions}>
-                      {item.status === "baru" ? (
-                        <Button title="Mulai Kerjakan" variant="ghost" size="sm" onPress={() => startMaint.mutate(item.maintenance_id)} testID={`maint-start-${item.id}`} />
-                      ) : null}
-                      <Button title="Tandai Selesai" size="sm" onPress={() => resolveMaint.mutate(item.maintenance_id)} testID={`maint-resolve-${item.id}`} />
-                    </View>
-                  </Card>
-                ) : null}
-              </Animated.View>
-            ))}
-
-            {items.length === 0 && units.total > 0 ? (
-              <EmptyState
-                icon="check"
-                title="Semua beres hari ini. Santai dulu."
-                subtitle="Ada calon penyewa baru? Catat sekarang supaya Sewain bisa ingatkan follow-up-nya."
-                action={<Button title="Tambah Calon Penyewa" onPress={() => router.push("/lead/new" as any)} testID="today-empty-new-lead" />}
-              />
-            ) : null}
-          </View>
+              <UnitPreview units={unitList} />
+              <LeadPreview leads={leadList} />
+              <TenantPreview tenants={tenantList} />
+          </>
         </View>
       </ScrollView>
+
+      <Sheet visible={!!focus} onClose={() => setFocus(null)} title={focus ? t(FOCUS[focus].title) : ""} testID="focus-sheet" scroll>
+        <View style={{ gap: spacing.md }}>
+          {focusItems.map((item) => (
+            <Animated.View key={`${item.type}-${item.id}`} exiting={ITEM_EXIT} layout={ITEM_REFLOW}>
+              <QueueCard
+                item={item}
+                onFollowup={() => openFrom(() => setFollowupLead({ ...item, id: item.lead_id }))}
+                onDetail={(path) => openFrom(() => router.push(path as any))}
+                onConfirm={() => confirmViewing.mutate(item.viewing_id)}
+                onCalendar={() => {
+                  Linking.openURL(googleCalendarLink({ name: item.name, phone: item.phone, unit_name: item.unit_name, scheduled_at: item.scheduled_at, location: item.location }));
+                  calendarViewing.mutate(item.viewing_id);
+                }}
+                onReschedule={() => openFrom(() => { setReschedule(item); setReschedDate(todayISO(1)); setReschedTime("14:00"); })}
+                onCancel={() => cancelViewing.mutate(item.viewing_id)}
+                onNego={() => toNegotiation(item)}
+                onNotYet={() => viewingNotYet.mutate(item.viewing_id)}
+                onPaid={() => markPaid.mutate(item.payment_id)}
+                onRemind={() => openFrom(() => setRemindPayment({ ...item, id: item.payment_id }))}
+                onLease={() => openFrom(() => setLease({ ...item, id: item.tenant_id }))}
+              />
+            </Animated.View>
+          ))}
+          {focus && focusItems.length === 0 ? (
+            <Animated.View entering={ALL_DONE} style={s.done} testID="focus-all-done">
+              <Illustration name="done" width={170} />
+              <RNText style={s.doneTitle}>{t("Beres semua. Mantap!")}</RNText>
+            </Animated.View>
+          ) : null}
+        </View>
+      </Sheet>
 
       <FollowupSheet lead={followupLead} onClose={() => setFollowupLead(null)} />
       <ReminderSheet payment={remindPayment} onClose={() => setRemindPayment(null)} />
       <LeaseSheet tenant={lease} onClose={() => setLease(null)} />
-      <Sheet visible={!!reschedule} onClose={() => setReschedule(null)} title={`Ganti jadwal viewing ${reschedule?.name || ""}`} testID="reschedule-sheet">
+      <Sheet visible={!!reschedule} onClose={() => setReschedule(null)} title={t("Ganti jadwal viewing {name}", { name: reschedule?.name || "" })} testID="reschedule-sheet">
         <View style={{ gap: spacing.md }}>
           <View style={{ flexDirection: "row", gap: spacing.md }}>
             <View style={{ flex: 1 }}>
-              <Field label="Tanggal">
+              <Field label={t("Tanggal")}>
                 <DateInput testID="reschedule-date-input" value={reschedDate} onChange={setReschedDate} />
               </Field>
             </View>
             <View style={{ flex: 1 }}>
-              <Field label="Jam">
+              <Field label={t("Jam")}>
                 <DateInput mode="time" testID="reschedule-time-input" value={reschedTime} onChange={setReschedTime} />
               </Field>
             </View>
           </View>
-          <Button title="Simpan Jadwal" onPress={() => reschedMutation.mutate({ id: reschedule.viewing_id, date: reschedDate, time: reschedTime })} loading={reschedMutation.isPending} testID="reschedule-save-button" />
+          <Button title={t("Simpan Jadwal")} onPress={() => reschedMutation.mutate({ id: reschedule.viewing_id, date: reschedDate, time: reschedTime })} loading={reschedMutation.isPending} testID="reschedule-save-button" />
         </View>
       </Sheet>
     </View>
+  );
+}
+
+// ------------------------------ Queue card (inside the sheets) ------------------------
+
+function QueueCard({
+  item, onFollowup, onDetail, onConfirm, onReschedule, onCancel, onNego, onNotYet, onPaid, onRemind, onLease, onCalendar,
+}: {
+  item: QueueItem;
+  onCalendar: () => void;
+  onFollowup: () => void; onDetail: (path: string) => void; onConfirm: () => void; onReschedule: () => void;
+  onCancel: () => void; onNego: () => void; onNotYet: () => void; onPaid: () => void; onRemind: () => void; onLease: () => void;
+}) {
+  const s = useStyles();
+  const qi = QUEUE_ICON[item.type] ?? QUEUE_ICON.followup;
+  const head = (title: string, sub: string, pill?: React.ReactNode) => (
+    <View style={s.cardHead}>
+      <IconCircle icon={qi.icon} tone={qi.tone} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <RNText style={s.itemTitle}>{title}</RNText>
+        <RNText style={s.itemSub}>{sub}</RNText>
+      </View>
+      {pill}
+    </View>
+  );
+  if (item.type === "followup") {
+    return (
+      <Card testID={`queue-followup-${item.id}`} style={s.sheetCard}>
+        {head(item.name, prefSummary(item) || t("Prospek"),
+          item.hot ? <StatusPill label={t("Hot Buyer")} tone="error" /> : undefined)}
+        <RNText style={s.reason}>{t(item.reason)}</RNText>
+        {item.note ? <RNText style={s.note} numberOfLines={2}>{item.note}</RNText> : null}
+        <View style={s.actions}>
+          <Button title={t("Follow-up")} size="sm" icon="whatsapp" onPress={onFollowup} testID={`followup-open-${item.id}`} />
+          <Button title={t("Detail")} variant="ghost" size="sm" onPress={() => onDetail(`/lead/${item.lead_id}`)} testID={`followup-detail-${item.id}`} />
+        </View>
+      </Card>
+    );
+  }
+  if (item.type === "viewing") {
+    return (
+      <Card testID={`queue-viewing-${item.id}`} style={s.sheetCard}>
+        {head(t("Viewing {name}", { name: item.name }), `${t("Unit {name}", { name: item.unit_name })} · ${dateTimeLabel(item.scheduled_at)}`,
+          <StatusPill label={item.status === "menunggu" ? t("Belum dikonfirmasi") : t("Terjadwal")} tone={item.status === "menunggu" ? "warning" : "info"} testID={`pill-viewing-${item.id}`} />)}
+        <View style={{ marginTop: spacing.md }}>
+          <CalendarActions
+            added={!!item.calendar_added}
+            onAdd={onCalendar}
+            onCancel={onCancel}
+            cancelLabel={t("Batal")}
+            primaryLabel={t("Undang Viewing")}
+            onPrimary={waLink(item.phone) ? () => Linking.openURL(waLink(item.phone, viewingInviteMessage({ name: item.name, unit_name: item.unit_name, scheduled_at: item.scheduled_at, location: item.location, units: item.units }))!) : null}
+            size="sm"
+            testID={`viewing-cal-${item.id}`}
+          />
+        </View>
+        <View style={s.actions}>
+          {item.status === "menunggu" ? <Button title={t("Konfirmasi")} size="sm" variant="ghost" onPress={onConfirm} testID={`viewing-confirm-${item.id}`} /> : null}
+          <Button title={t("Ganti Jadwal")} variant="ghost" size="sm" onPress={onReschedule} testID={`viewing-reschedule-${item.id}`} />
+        </View>
+      </Card>
+    );
+  }
+  if (item.type === "viewing_result") {
+    return (
+      <Card testID={`queue-viewing-result-${item.id}`} style={s.sheetCard}>
+        {head(t("Hasil viewing {name}?", { name: item.name }), `${t("Unit {name}", { name: item.unit_name })} · ${dateTimeLabel(item.scheduled_at)}`)}
+        <View style={s.actions}>
+          <Button title={t("Lanjut Negosiasi")} size="sm" onPress={onNego} testID={`viewing-nego-${item.id}`} />
+          <Button title={t("Belum cocok")} variant="ghost" size="sm" onPress={onNotYet} testID={`viewing-notyet-${item.id}`} />
+        </View>
+      </Card>
+    );
+  }
+  if (item.type === "payment") {
+    return (
+      <Card testID={`queue-payment-${item.id}`} style={s.sheetCard}>
+        {head(`${item.name} · ${item.unit_name}`, `${rupiah(item.amount)}${item.months > 1 ? ` (${t("{n} bulan", { n: item.months })})` : ""} · ${t("tempo {date}", { date: shortDay(item.due_date + "T00:00:00") })}`,
+          <StatusPill label={item.days_late > 0 ? t("Telat {n} hari", { n: item.days_late }) : t("Belum bayar")} tone="error" testID={`pill-payment-${item.id}`} />)}
+        <View style={s.actions}>
+          <Button title={t("Tandai Lunas")} size="sm" onPress={onPaid} testID={`payment-paid-${item.id}`} />
+          <Button title={t("Ingatkan")} variant="ghost" size="sm" icon="whatsapp" onPress={onRemind} testID={`payment-remind-${item.id}`} />
+        </View>
+      </Card>
+    );
+  }
+  if (item.type === "lease") {
+    return (
+      <Card testID={`queue-lease-${item.id}`} style={s.sheetCard}>
+        {head(`${item.name} · ${item.unit_name}`, t("Kontrak sampai {date}", { date: shortDay(item.end_date + "T00:00:00") }),
+          <StatusPill label={leaseLeftLabel(item.days_left)} tone={item.days_left <= 7 ? "error" : "warning"} testID={`pill-lease-${item.id}`} />)}
+        <View style={s.actions}>
+          <Button title={t("Perpanjang / Kabari")} size="sm" onPress={onLease} testID={`lease-open-${item.id}`} />
+          <Button title={t("Detail")} variant="ghost" size="sm" onPress={() => onDetail(`/tenant/${item.tenant_id}`)} testID={`lease-detail-${item.id}`} />
+        </View>
+      </Card>
+    );
+  }
+  return null;
+}
+
+// ------------------------------ Previews ------------------------------------------
+
+function Section({ title, to, testID, children }: { title: string; to: string; testID: string; children: React.ReactNode }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  return (
+    <View style={{ gap: spacing.sm, marginTop: spacing.md }} testID={testID}>
+      <PressableScale role="link" onPress={() => router.push(to as any)} style={s.sectionHead} testID={`${testID}-all`}>
+        <RNText style={s.sectionTitle}>{title}</RNText>
+        <View style={s.seeAll}>
+          <RNText style={s.seeAllText}>{t("Lihat semua")}</RNText>
+          <Icon name="chevron-right" size={16} color={colors.brandPrimary} />
+        </View>
+      </PressableScale>
+      <View style={s.previewList}>{children}</View>
+    </View>
+  );
+}
+
+function PreviewRow({ onPress, left, title, sub, right, testID, last }: { onPress: () => void; left: React.ReactNode; title: string; sub?: string | null; right?: React.ReactNode; testID: string; last?: boolean }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  return (
+    <PressableScale soft onPress={onPress} style={[s.previewRow, last && { borderBottomWidth: 0 }]} testID={testID}>
+      {left}
+      <View style={{ flex: 1, gap: 2 }}>
+        <RNText style={s.previewTitle} numberOfLines={1}>{title}</RNText>
+        {sub ? <RNText style={s.previewSub} numberOfLines={1}>{sub}</RNText> : null}
+      </View>
+      {right}
+      <Icon name="chevron-right" size={16} color={colors.borderStrong} />
+    </PressableScale>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  const s = useStyles();
+  return <RNText style={s.emptyText}>{text}</RNText>;
+}
+
+function UnitPreview({ units }: { units?: any[] }) {
+  // Vacant units first (longest empty first): those are the ones to market.
+  const rows = [...(units || [])]
+    .sort((a, b) => Number(b.status === "kosong") - Number(a.status === "kosong") || (daysFromNow(b.vacant_since) ?? 0) - (daysFromNow(a.vacant_since) ?? 0))
+    .slice(0, 3);
+  return (
+    <Section title={t("Unit||tab")} to="/units" testID="preview-units">
+      {rows.length === 0 ? <Empty text={t("Belum ada unit.")} /> : null}
+      {rows.map((u, i) => (
+        <PreviewRow
+          key={u.id}
+          last={i === rows.length - 1}
+          testID={`preview-unit-${u.id}`}
+          onPress={() => router.push(`/unit/${u.id}` as any)}
+          left={<UnitThumb photo={u.photos?.[0]} width={48} height={48} radiusSize={12} />}
+          title={u.name}
+          sub={[mainPrice(u, { m: t("/bulan"), d: t("/hari"), y: t("/tahun") }) || t("Belum ada harga"), unitKind(u)].filter(Boolean).join(" · ")}
+          right={<StatusPill label={UNIT_STATUS[u.status] || u.status} tone={u.status === "kosong" ? "info" : u.status === "terisi" ? "success" : u.status === "reserved" ? "warning" : "neutral"} />}
+        />
+      ))}
+    </Section>
+  );
+}
+
+function LeadPreview({ leads }: { leads?: any[] }) {
+  // Scheduled follow-ups due, then upcoming viewings, then hot buyers, then the rest.
+  const rank = (l: any) =>
+    l.next_followup_date && l.next_followup_date <= todayISO() ? 0 : l.next_viewing_at ? 1 : l.interest === "high" ? 2 : 3;
+  const rows = [...(leads || [])].sort((a, b) => rank(a) - rank(b)).slice(0, 3);
+  return (
+    <Section title={t("Prospek||tab")} to="/leads" testID="preview-leads">
+      {rows.length === 0 ? <Empty text={t("Belum ada prospek aktif.")} /> : null}
+      {rows.map((l, i) => (
+        <PreviewRow
+          key={l.id}
+          last={i === rows.length - 1}
+          testID={`preview-lead-${l.id}`}
+          onPress={() => router.push(`/lead/${l.id}` as any)}
+          left={<Avatar name={l.name} photo={l.photo} size={40} />}
+          title={l.name}
+          sub={lookingFor(l)}
+          right={l.interest === "high" ? <StatusPill label={t("Hot Buyer")} tone="error" /> : null}
+        />
+      ))}
+    </Section>
+  );
+}
+
+function TenantPreview({ tenants }: { tenants?: any[] }) {
+  // Contracts ending soonest first.
+  const rows = [...(tenants || [])].sort((a, b) => (a.days_left ?? 9999) - (b.days_left ?? 9999)).slice(0, 3);
+  return (
+    <Section title={t("Tenant||tab")} to="/tenants" testID="preview-tenants">
+      {rows.length === 0 ? <Empty text={t("Belum ada tenant.")} /> : null}
+      {rows.map((tn, i) => (
+        <PreviewRow
+          key={tn.id}
+          last={i === rows.length - 1}
+          testID={`preview-tenant-${tn.id}`}
+          onPress={() => router.push(`/tenant/${tn.id}` as any)}
+          left={<Avatar name={tn.name} photo={tn.photo} size={40} />}
+          title={tn.name}
+          sub={leaseLeftLabel(tn.days_left)}
+        />
+      ))}
+    </Section>
   );
 }
 
@@ -354,61 +491,71 @@ const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
   page: { flex: 1, backgroundColor: colors.surface, padding: spacing.lg, justifyContent: "center" },
   header: {
-    backgroundColor: colors.surface,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
-  iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.sm },
-  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm, maxWidth: 760, width: "100%", alignSelf: "center" },
-  greeting: { color: colors.onSurfaceSecondary, fontFamily: fonts.medium, fontSize: 15 },
-  headline: { color: colors.onSurface, fontFamily: fonts.bold, fontSize: 26, letterSpacing: -0.4, lineHeight: 32 },
-  summary: { color: colors.muted, fontFamily: fonts.regular, fontSize: 13.5, lineHeight: 20, marginTop: 2 },
+  iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: colors.surfaceSecondary, ...cardShadow },
+  avatarBtn: { borderRadius: 24, borderWidth: 2, borderColor: colors.surfaceSecondary, ...cardShadow },
+  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.md, maxWidth: 760, width: "100%", alignSelf: "center" },
+  greeting: { color: colors.onSurface, ...fonts.bold, fontSize: 28, letterSpacing: -0.5, lineHeight: 34, marginBottom: spacing.xs },
   banner: {
-    flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md,
-    padding: spacing.md, borderRadius: radius.md, borderWidth: 1,
-    borderColor: withAlpha(colors.warning, 0.4), backgroundColor: withAlpha(colors.warning, 0.08),
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    padding: spacing.md, borderRadius: 18, backgroundColor: withAlpha("#E8A33D", 0.14),
   },
-  bannerText: { color: colors.onSurfaceTertiary, fontFamily: fonts.medium, fontSize: 13, flex: 1, lineHeight: 18 },
-  statGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, marginTop: spacing.md },
+  bannerText: { color: colors.onSurface, ...fonts.medium, fontSize: 14.5, flex: 1, lineHeight: 20 },
+  statGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
   statCard: {
-    flexBasis: "47%",
+    flexBasis: "45%",
     flexGrow: 1,
     backgroundColor: colors.surfaceSecondary,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
+    borderRadius: 20,
     padding: spacing.md,
     gap: 4,
-    minHeight: 80,
+    ...cardShadow,
   },
-  statValue: { color: colors.onSurface, fontFamily: fonts.bold, fontSize: 22, letterSpacing: -0.3 },
-  statLabel: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 17 },
-  unitCard: {
+  statCardWide: { flexBasis: "22%" },
+  statTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+  statValue: { color: colors.onSurface, ...fonts.bold, fontSize: 28, letterSpacing: -0.6, marginTop: 8 },
+  statValueLong: { fontSize: 21, letterSpacing: -0.4, marginTop: 12 },
+  statLabel: { color: colors.onSurfaceSecondary, ...fonts.medium, fontSize: 14, lineHeight: 19 },
+  rowCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
     backgroundColor: colors.surfaceSecondary,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    marginTop: spacing.md,
+    borderRadius: 20,
+    padding: spacing.md,
+    ...cardShadow,
   },
-  unitCardTitle: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 16 },
-  unitCardSub: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 13, marginTop: 2 },
-  barWrap: { flexDirection: "row", height: 6, borderRadius: 3, overflow: "hidden", gap: 2, marginTop: spacing.sm },
-  barFill: { borderRadius: 3 },
-  setupTitle: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 16 },
-  setupSub: { color: colors.muted, fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, marginTop: 4 },
-  cardHead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
-  itemTitle: { color: colors.onSurface, fontFamily: fonts.semibold, fontSize: 15.5 },
-  itemSub: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 18, marginTop: 2 },
-  reason: { color: colors.warning, fontFamily: fonts.medium, fontSize: 12.5, marginTop: spacing.sm },
-  note: { color: colors.onSurfaceSecondary, fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, marginTop: 4 },
-  matchLine: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12.5, marginTop: spacing.sm },
-  matchUnit: { color: colors.onSurface, fontFamily: fonts.semibold },
+  rowCardText: { color: colors.onSurface, ...fonts.semibold, fontSize: 16, flex: 1 },
+  sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 4 },
+  sectionTitle: { color: colors.onSurface, ...fonts.bold, fontSize: 22, letterSpacing: -0.3 },
+  seeAll: { flexDirection: "row", alignItems: "center", gap: 2 },
+  seeAllText: { color: colors.brandPrimary, ...fonts.semibold, fontSize: 15 },
+  previewList: { backgroundColor: colors.surfaceSecondary, borderRadius: 20, overflow: "hidden", ...cardShadow },
+  previewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    minHeight: 68,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  previewTitle: { color: colors.onSurface, ...fonts.semibold, fontSize: 16.5 },
+  previewSub: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 14 },
+  emptyText: { color: colors.muted, ...fonts.regular, fontSize: 15, padding: spacing.md },
+  sheetCard: { backgroundColor: colors.surface, boxShadow: "none", shadowOpacity: 0 } as any,
+  cardHead: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  itemTitle: { color: colors.onSurface, ...fonts.semibold, fontSize: 17, letterSpacing: -0.2 },
+  itemSub: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 14.5, lineHeight: 20 },
+  reason: { color: colors.brandPrimary, ...fonts.semibold, fontSize: 14.5, marginTop: spacing.md },
+  note: { color: colors.onSurfaceSecondary, ...fonts.regular, fontSize: 15, lineHeight: 22, marginTop: 4 },
   actions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md, flexWrap: "wrap" },
+  done: { alignItems: "center", gap: 6, paddingVertical: spacing.lg },
+  doneTitle: { color: colors.onSurface, ...fonts.bold, fontSize: 20, textAlign: "center", marginTop: spacing.sm },
 }));

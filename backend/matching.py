@@ -3,6 +3,36 @@ from __future__ import annotations
 
 import re
 
+# What a unit is, and what a prospect can ask for (the same vocabulary on both sides).
+UNIT_CATEGORIES = ('apartemen', 'rumah')
+TYPES_BY_CATEGORY = {
+    'apartemen': ['Studio', '1 Bedroom', '2 Bedroom', '3 Bedroom'],
+    'rumah': ['1 Bedroom', '2 Bedroom', '3 Bedroom', '4 Bedroom'],
+}
+UNIT_SIZES = ('Studio', '1 Bedroom', '2 Bedroom', '3 Bedroom')  # what a unit can be (the add-unit form)
+FURNISHING = ('furnished', 'semi', 'unfurnished')
+RENT_TERMS = ('harian', 'bulanan', 'tahunan')
+TERM_PRICE = {'harian': 'daily_price', 'bulanan': 'monthly_price', 'tahunan': 'yearly_price'}
+TERM_LABEL = {'harian': 'Ada harga harian', 'bulanan': 'Ada harga bulanan', 'tahunan': 'Ada harga tahunan'}
+
+
+def pref_sizes(lead: dict) -> set[str]:
+    """'apartemen:Studio', 'rumah:2 Bedroom' -> {'Studio', '2 Bedroom'}."""
+    return {x.split(':', 1)[-1] for x in lead.get('pref_types') or []}
+
+
+def clean_prefs(category: str | None, types: list[str] | None, terms: list[str] | None) -> dict:
+    """Keep only valid preference values; unit sizes must belong to the chosen category."""
+    cat = category if category in ('apartemen', 'rumah', 'keduanya') else None
+    allowed = {f'{c}:{t}' for c in UNIT_CATEGORIES if cat in (c, 'keduanya') for t in TYPES_BY_CATEGORY[c]}
+    kept = []
+    for x in types or []:
+        if x in allowed and x not in kept:
+            kept.append(x)
+    return {'pref_category': cat, 'pref_types': kept,
+            'pref_terms': [t for t in RENT_TERMS if t in (terms or [])]}
+
+
 TYPE_ALIASES = {
     'studio': ['studio'],
     '1 bedroom': ['1 bedroom', '1br', 'one bedroom', '1 kamar', '1 kt', '1 kamar tidur'],
@@ -21,6 +51,21 @@ def _norm_type(s: str | None) -> str:
 
 def match_score(lead: dict, unit: dict, property_name: str = '', property_area: str = '') -> tuple[int, list[str]]:
     score, reasons = 0, []
+    # Preferences picked in the prospect form.
+    # A unit matches a prospect looking for the same type (Studio, 1 Bedroom, …).
+    ucat = unit.get('category')
+    if lead.get('pref_types'):
+        if unit.get('unit_type') in pref_sizes(lead):
+            score += 40
+            reasons.append(f'Tipe {unit.get("unit_type")}')
+    elif lead.get('pref_category') and ucat and lead['pref_category'] in (ucat, 'keduanya'):
+        score += 25
+        reasons.append(ucat.capitalize())
+    for term in lead.get('pref_terms') or []:
+        if unit.get(TERM_PRICE[term]):
+            score += 15
+            reasons.append(TERM_LABEL[term])
+            break
     price = int(unit.get('monthly_price') or 0)
     bmax = lead.get('budget_max') or lead.get('budget_min')
     if bmax:

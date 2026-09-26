@@ -52,10 +52,13 @@ def test_premium_unlimited_then_downgrade_hides_extra_units(account):
     assert len(account.ok('get', '/units')) == 4
 
     # CSV import + export are premium features.
-    res = account.ok('post', '/units/import-csv', {'csv_text': 'name,property,monthly_price,owner_name\nU5,Tokyo Riverside,2500000,Pak Budi'})
-    assert res['imported'] == 1
+    res = account.ok('post', '/units/import-csv', {'csv_text': 'kode,hunian,tipe,luas,harga_bulanan,fasilitas,furnished\n'
+                                                                'U5,Tokyo Riverside,2br,40,2500000,"ac, wifi",semi\n'
+                                                                'U6,Casa,4BR,90,1,,\n'
+                                                                'U7,,Studio,20,1,,'})
+    assert res['imported'] == 1 and len(res['errors']) == 2  # no 4BR; residence is required
     csv_text = account.get('/export/units').text
-    assert 'U5' in csv_text and 'Pak Budi' in csv_text
+    assert 'U5' in csv_text and '2 Bedroom' in csv_text and 'AC, Wi-Fi' in csv_text and 'semi' in csv_text
 
     # Premium lapses after premium_until -> back to free; only the first 3 units stay visible.
     set_plan(account.email, 'premium', '2020-01-01')
@@ -73,9 +76,12 @@ def test_premium_unlimited_then_downgrade_hides_extra_units(account):
 def test_user_cannot_change_own_plan(account):
     # There is no user-facing endpoint that accepts a plan; extra fields are ignored.
     account.patch('/leads/000000000000000000000000', {'plan': 'premium'})
-    r = account.c.post('/api/auth/register', json={'name': 'X', 'email': 'sneaky@contoh.com', 'password': 'rahasia1',
-                                                   'plan': 'premium', 'is_demo': True})
-    assert r.json()['user']['plan'] == 'free' and r.json()['user']['is_demo'] is False
+    r = account.c.post('/api/auth/register', json={'name': 'X', 'email': 'sneaky@contoh.com', 'password': 'rahasia12',
+                                                   'plan': 'premium', 'premium_until': '2099-12-31', 'is_demo': True})
+    assert r.json()['user']['is_demo'] is False
+    sneaky = r.json()['token']
+    plan = account.c.get('/api/plan', headers={'Authorization': f'Bearer {sneaky}'}).json()
+    assert plan['trial'] and plan['premium_until'] != '2099-12-31' and plan['trial_days_left'] == 14
 
 
 def test_admin_endpoint_requires_secret(account, monkeypatch):

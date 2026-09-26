@@ -1,11 +1,31 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { router } from "expo-router";
-import { usePathname } from "expo-router";
+import { router, usePathname } from "expo-router";
 import { api, markAuthReady, setAuthToken } from "./api";
 import { storage } from "@/src/utils/storage";
 import { queryClient } from "@/src/query-client";
+import { getLang, useLang } from "./i18n";
 
-export type User = { id: string; name: string; email: string; is_demo: boolean; plan: "free" | "premium" | "demo" };
+export type User = {
+  id: string; name: string; email: string; is_demo: boolean; plan: "free" | "premium" | "demo"; timezone?: string;
+  language?: "id" | "en"; photo?: string | null; phone?: string | null; agency?: string | null; domicile?: string | null;
+  bank_name?: string | null; bank_account?: string | null; bank_holder?: string | null;
+  office_bank_name?: string | null; office_bank_account?: string | null; office_bank_holder?: string | null;
+  onboarding_tour_seen?: boolean; onboarding_dismissed?: boolean;
+};
+export type Session = { token: string; user: User };
+
+// Pages anyone can open without an account.
+export const PUBLIC_PATHS = ["/", "/privasi", "/ketentuan", "/reset"];
+
+const ZONES = ["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura"];
+function deviceZone(): string | undefined {
+  try {
+    const z = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return ZONES.includes(z) ? z : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const TOKEN_KEY = "sewain_token";
 const USER_KEY = "sewain_user"; // last known profile, so the installed app still opens offline
@@ -18,6 +38,8 @@ type AuthCtx = {
   register: (name: string, email: string, password: string) => Promise<void>;
   demo: () => Promise<void>;
   logout: () => Promise<void>;
+  applySession: (res: Session) => Promise<void>;
+  setUserProfile: (u: User) => Promise<void>;
 };
 
 const Ctx = createContext<AuthCtx>(null as any);
@@ -27,6 +49,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [init, setInit] = useState(false);
   const pathname = usePathname();
+  const { setLang } = useLang();
+  // The account's language wins once we know who is signed in.
+  useEffect(() => {
+    if (user?.language) setLang(user.language);
+  }, [user?.language, setLang]);
 
   useEffect(() => {
     (async () => {
@@ -34,10 +61,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (t) {
         setAuthToken(t);
         try {
-          const u = await api<User>("/me");
-          await storage.setItem(USER_KEY, JSON.stringify(u));
-          setUser(u);
-          setToken(t);
+          // Renew the session on every open: signed in stays signed in.
+          const fresh = await api<{ token: string; user: User }>("/auth/refresh", { method: "POST" });
+          setAuthToken(fresh.token);
+          await storage.setItem(TOKEN_KEY, fresh.token);
+          await storage.setItem(USER_KEY, JSON.stringify(fresh.user));
+          setUser(fresh.user);
+          setToken(fresh.token);
         } catch (e: any) {
           const cached = e?.status === 401 ? null : await storage.getItem(USER_KEY, null);
           if (typeof cached === "string") {
@@ -58,7 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!init) return;
-    if (!user && pathname !== "/") router.replace("/");
+    if (!user && !PUBLIC_PATHS.includes(pathname)) router.replace("/");
     if (user && pathname === "/") router.replace("/today");
   }, [init, user, pathname]);
 
@@ -83,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = async (name: string, email: string, password: string) => {
     const res = await api<{ token: string; user: User }>("/auth/register", {
       method: "POST",
-      body: { name, email, password },
+      body: { name, email, password, timezone: deviceZone(), language: getLang() },
     });
     await apply(res);
   };
@@ -91,6 +121,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const demo = async () => {
     const res = await api<{ token: string; user: User }>("/auth/demo", { method: "POST" });
     await apply(res);
+  };
+
+  const setUserProfile = async (u: User) => {
+    await storage.setItem(USER_KEY, JSON.stringify(u));
+    setUser(u);
   };
 
   const logout = async () => {
@@ -104,7 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ user, init, token, login, register, demo, logout }}>
+    <Ctx.Provider value={{ user, init, token, login, register, demo, logout, applySession: apply, setUserProfile }}>
       {children}
     </Ctx.Provider>
   );

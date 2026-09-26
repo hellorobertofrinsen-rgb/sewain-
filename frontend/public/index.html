@@ -3,18 +3,18 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
-    <title>Sewain</title>
-    <meta name="description" content="AI admin buat bisnis sewa properti." />
-    <meta name="theme-color" content="#121214" />
-    <meta name="color-scheme" content="dark" />
+    <title>SewAIn - Property Manager</title>
+    <meta name="description" content="Admin buat agen sewa properti: prospek, unit, dan tenant di satu tempat." />
+    <meta name="theme-color" content="#F4F5F7" />
+    <meta name="color-scheme" content="light" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/png" href="/icons/favicon-48.png" />
     <!-- iPhone / iPad: "Add to Home Screen" opens full screen like an app -->
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Sewain" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="SewAIn" />
     <style id="expo-reset">
       /* Feel installed, not embedded (mobile-native). Each rule is here for a reason: */
       html {
@@ -24,7 +24,7 @@
       }
       html, body {
         height: 100%;
-        background: #121214;
+        background: #F4F5F7;
         overscroll-behavior: none; /* no pull-to-refresh / page rubber-band behind the app */
       }
       body { overflow: hidden; margin: 0; }
@@ -38,11 +38,16 @@
         user-select: none;
         -webkit-touch-callout: none;
       }
-      input[type="date"], input[type="time"] { color-scheme: dark; }
+      [role="checkbox"], [role="switch"] { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+      input[type="date"], input[type="time"] { color-scheme: light; }
+      /* Focus: no browser ring after a tap; a soft brand ring for keyboard users, and a glow on the field being typed in. */
+      :focus { outline: none; }
+      :focus-visible { outline: 2px solid rgba(36, 87, 214, 0.55); outline-offset: 2px; }
+      input:focus, textarea:focus { outline: none; box-shadow: 0 0 0 2px rgba(36, 87, 214, 0.45); }
     </style>
   </head>
   <body>
-    <noscript>Sewain butuh JavaScript untuk berjalan.</noscript>
+    <noscript>SewAIn butuh JavaScript untuk berjalan.</noscript>
     <div id="root"></div>
   </body>
 </html>

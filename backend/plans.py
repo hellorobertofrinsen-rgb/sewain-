@@ -54,6 +54,10 @@ UPGRADE_WHATSAPP = '6282122232421'
 
 DEMO_RETENTION_DAYS = 7
 
+# New accounts start with Premium for this many days (inclusive), then drop to Free.
+# Setup (adding every unit) happens in week one, before the Free limits could get in the way.
+TRIAL_DAYS = 14
+
 # Lead statuses that no longer count as "active" (closed either way).
 CLOSED_LEAD_STATUSES = ['deal', 'tidak_jadi']
 
@@ -63,6 +67,10 @@ LIMIT_MESSAGES = {
     'feature_bulk_import': 'Impor unit dari CSV tersedia di paket Premium.',
     'feature_export': 'Export data tersedia di paket Premium.',
 }
+
+
+def trial_until() -> str:
+    return (today_wib().date() + timedelta(days=TRIAL_DAYS - 1)).isoformat()
 
 
 def effective_plan(user: dict) -> str:
@@ -147,9 +155,11 @@ async def plan_summary(user: dict) -> dict:
     unit_count = await count_units(aid)
     limits = PLAN_LIMITS[plan]
     hidden = 0 if limits['max_units'] is None else max(0, unit_count - limits['max_units'])
+    trial = plan == 'premium' and bool(user.get('trial'))
     out = {
         'plan': plan,
-        'label': PLAN_LABELS[plan],
+        'label': 'Trial Premium' if trial else PLAN_LABELS[plan],
+        'trial': trial,
         'premium_until': user.get('premium_until') if plan == 'premium' else None,
         'limits': limits,
         'usage': {'units': unit_count, 'active_leads': await count_active_leads(aid)},
@@ -157,6 +167,12 @@ async def plan_summary(user: dict) -> dict:
         'pricing': PRICING,
         'upgrade_whatsapp': UPGRADE_WHATSAPP,
     }
+    if trial and user.get('premium_until'):
+        from helpers import parse_date
+        until = parse_date(user['premium_until'])
+        out['trial_days_left'] = (until - today_wib().date()).days + 1 if until else None
+    elif user.get('trial') and plan == 'free':
+        out['trial_ended'] = True
     if plan == 'demo' and isinstance(user.get('created_at'), datetime):
         created = user['created_at']
         out['demo_expires_at'] = (created + timedelta(days=DEMO_RETENTION_DAYS)).isoformat()
@@ -176,5 +192,5 @@ async def set_user_plan(email: str, plan: str, premium_until: str | None = None)
     if not user:
         raise LookupError(f'Akun {email} tidak ditemukan')
     until = parse_date(premium_until).isoformat() if (plan == 'premium' and premium_until) else None
-    await users.update_one({'_id': user['_id']}, {'$set': {'plan': plan, 'premium_until': until}})
+    await users.update_one({'_id': user['_id']}, {'$set': {'plan': plan, 'premium_until': until, 'trial': False}})
     return {'email': user['email'], 'plan': plan, 'premium_until': until}

@@ -1,108 +1,134 @@
-import React, { useState } from "react";
+import React from "react";
 import { Text as RNText, View } from "react-native";
-import { Chip, Field, Input, Textarea, PressableScale } from "./ui";
-import { DateInput } from "./DateInput";
-import { moneyInput, parseMoney } from "@/src/lib/format";
+import { Chip, Field, Input, SwitchRow } from "./ui";
+import { t } from "@/src/lib/i18n";
+import { PrefCategory, TERMS, prefOptions } from "@/src/lib/unitKinds";
 import { fonts, makeStyles, spacing } from "@/src/theme";
 
-export const UNIT_TYPES = ["Studio", "1 Bedroom", "2 Bedroom", "3 Bedroom", "Kost", "Rumah", "Villa"];
+// A prospect is: a name, a WhatsApp number, whether they are a hot buyer, and
+// (optionally) what they are looking for. Nothing else to fill in.
 
 export type LeadFormValue = {
   name: string;
   phone: string;
-  budget: string;
-  unit_type: string;
-  preferred_location: string;
-  move_in_date: string;
-  requirements: string;
-  notes: string;
-  next_followup_date: string;
+  hot: boolean;
+  pref_category: PrefCategory | null;
+  pref_types: string[];
+  pref_terms: string[];
 };
 
-export const emptyLeadForm: LeadFormValue = {
-  name: "", phone: "", budget: "", unit_type: "", preferred_location: "", move_in_date: "",
-  requirements: "", notes: "", next_followup_date: "",
-};
+export const emptyLeadForm: LeadFormValue = { name: "", phone: "", hot: false, pref_category: null, pref_types: [], pref_terms: [] };
 
 export function leadToForm(l: any): LeadFormValue {
   return {
     name: l.name || "",
     phone: l.phone || "",
-    budget: moneyInput(l.budget_max || l.budget_min),
-    unit_type: l.unit_type || "",
-    preferred_location: l.preferred_location || "",
-    move_in_date: l.move_in_date || "",
-    requirements: (l.requirements || []).join(", "),
-    notes: l.notes || "",
-    next_followup_date: l.next_followup_date || "",
+    hot: l.interest === "high",
+    pref_category: l.pref_category || null,
+    pref_types: l.pref_types || [],
+    pref_terms: l.pref_terms || [],
   };
 }
+
+export const phoneOk = (p: string) => p.replace(/\D/g, "").length >= 8;
+export const leadFormValid = (f: LeadFormValue) => !!f.name.trim() && phoneOk(f.phone);
 
 export function formToBody(f: LeadFormValue) {
   return {
     name: f.name.trim(),
-    phone: f.phone.trim() || null,
-    budget_max: parseMoney(f.budget),
-    unit_type: f.unit_type || null,
-    preferred_location: f.preferred_location.trim() || null,
-    move_in_date: f.move_in_date.trim() || null,
-    requirements: f.requirements.split(",").map((x) => x.trim()).filter(Boolean),
-    notes: f.notes.trim() || null,
-    next_followup_date: f.next_followup_date || null,
+    phone: f.phone.trim(),
+    interest: f.hot ? "high" : "medium",
+    pref_category: f.pref_category,
+    pref_types: f.pref_types,
+    pref_terms: f.pref_terms,
   };
 }
 
-export function LeadForm({ value, onChange, startExpanded = false }: { value: LeadFormValue; onChange: (v: LeadFormValue) => void; startExpanded?: boolean }) {
+const CATS: { key: PrefCategory; label: string }[] = [
+  { key: "apartemen", label: "Apartemen" },
+  { key: "rumah", label: "Rumah" },
+  { key: "keduanya", label: "Apartemen & Rumah" },
+];
+
+export function LeadForm({ value, onChange }: { value: LeadFormValue; onChange: (v: LeadFormValue) => void }) {
   const s = useStyles();
-  const [more, setMore] = useState(startExpanded);
-  const set = (k: keyof LeadFormValue) => (v: string) => onChange({ ...value, [k]: v });
+  const set = (patch: Partial<LeadFormValue>) => onChange({ ...value, ...patch });
+
+  const pickCategory = (c: PrefCategory) => {
+    if (value.pref_category === c) return set({ pref_category: null, pref_types: [] });
+    // Keep only the sizes that still exist under the new choice.
+    const allowed = new Set(prefOptions(c).map((o) => o.key));
+    set({ pref_category: c, pref_types: value.pref_types.filter((k) => allowed.has(k)) });
+  };
+  const toggle = (list: string[], k: string) => (list.includes(k) ? list.filter((x) => x !== k) : [...list, k]);
+  const options = prefOptions(value.pref_category);
+  const phoneBad = value.phone.trim().length > 0 && !phoneOk(value.phone);
+
   return (
     <View style={{ gap: spacing.md }}>
-      <Field label="Nama">
-        <Input testID="lead-name-input" value={value.name} onChangeText={set("name")} placeholder="mis. Jessica" autoCapitalize="words" />
+      <Field label={t("Nama")}>
+        <Input testID="lead-name-input" value={value.name} onChangeText={(v) => set({ name: v })} placeholder={t("mis. Jessica")} autoCapitalize="words" />
       </Field>
-      <Field label="No. WhatsApp">
-        <Input testID="lead-phone-input" value={value.phone} onChangeText={set("phone")} placeholder="0812…" keyboardType="phone-pad" />
+      <Field label={t("No. WhatsApp")} hint={phoneBad ? t("Nomor terlalu pendek") : undefined}>
+        <Input testID="lead-phone-input" value={value.phone} onChangeText={(v) => set({ phone: v })} placeholder="0812…" keyboardType="phone-pad" autoComplete="tel" />
       </Field>
-      <Field label="Budget per bulan">
-        <Input testID="lead-budget-input" value={value.budget} onChangeText={(v) => set("budget")(moneyInput(parseMoney(v)))} placeholder="3.500.000" keyboardType="numeric" />
-      </Field>
-      <Field label="Cari tipe">
+      <SwitchRow
+        label={t("Hot Buyer")}
+        sub={t("Serius dan siap sewa. Tampil sebagai label Hot Buyer.")}
+        value={value.hot}
+        onChange={(v) => set({ hot: v })}
+        testID="lead-hot-switch"
+      />
+
+      <View style={s.group}>
+        <RNText style={s.groupTitle}>
+          {t("Preferensi unit")} <RNText style={s.optional}>{t("(opsional)")}</RNText>
+        </RNText>
         <View style={s.wrap}>
-          {UNIT_TYPES.map((t) => (
-            <Chip key={t} label={t} active={value.unit_type === t} onPress={() => set("unit_type")(value.unit_type === t ? "" : t)} testID={`lead-type-${t}`} />
+          {CATS.map((c) => (
+            <Chip key={c.key} label={t(c.label)} active={value.pref_category === c.key} onPress={() => pickCategory(c.key)} testID={`lead-cat-${c.key}`} />
           ))}
         </View>
-      </Field>
+        {options.length ? (
+          <View style={s.wrap} testID="lead-pref-types">
+            {options.map((o) => (
+              <Chip
+                key={o.key}
+                check
+                label={o.label}
+                active={value.pref_types.includes(o.key)}
+                onPress={() => set({ pref_types: toggle(value.pref_types, o.key) })}
+                testID={`lead-type-${o.key.replace(/[: ]/g, "-")}`}
+              />
+            ))}
+          </View>
+        ) : null}
+      </View>
 
-      {more ? (
-        <>
-          <Field label="Lokasi yang diinginkan">
-            <Input testID="lead-location-input" value={value.preferred_location} onChangeText={set("preferred_location")} placeholder="mis. Canggu, PIK 2" />
-          </Field>
-          <Field label="Rencana pindah">
-            <Input testID="lead-movein-input" value={value.move_in_date} onChangeText={set("move_in_date")} placeholder="mis. bulan depan, 1 Oktober" />
-          </Field>
-          <Field label="Kebutuhan (pisah pakai koma)">
-            <Input testID="lead-reqs-input" value={value.requirements} onChangeText={set("requirements")} placeholder="furnished, boleh hewan, dekat stasiun" />
-          </Field>
-          <Field label="Catatan">
-            <Textarea testID="lead-notes-input" value={value.notes} onChangeText={set("notes")} placeholder="Info penting dari chat, mis. 'nunggu diskusi sama suami'" style={{ minHeight: 80 }} />
-          </Field>
-          <Field label="Follow-up tanggal" hint="Muncul di Hari Ini pada tanggal ini.">
-            <DateInput testID="lead-followup-date" value={value.next_followup_date} onChange={set("next_followup_date")} />
-          </Field>
-        </>
-      ) : (
-        <PressableScale onPress={() => setMore(true)} testID="lead-more-toggle" style={{ paddingVertical: 4 }}>
-          <RNText style={s.more}>+ Lokasi, rencana pindah, kebutuhan, catatan</RNText>
-        </PressableScale>
-      )}
+      <View style={s.group}>
+        <RNText style={s.groupTitle}>
+          {t("Preferensi waktu sewa")} <RNText style={s.optional}>{t("(opsional)")}</RNText>
+        </RNText>
+        <View style={s.wrap}>
+          {TERMS.map((o) => (
+            <Chip
+              key={o.key}
+              check
+              label={t(o.label)}
+              active={value.pref_terms.includes(o.key)}
+              onPress={() => set({ pref_terms: toggle(value.pref_terms, o.key) })}
+              testID={`lead-term-${o.key}`}
+            />
+          ))}
+        </View>
+      </View>
     </View>
   );
 }
 
 const useStyles = makeStyles((colors) => ({
+  group: { gap: spacing.sm },
+  groupTitle: { color: colors.onSurface, ...fonts.semibold, fontSize: 15 },
+  optional: { color: colors.muted, ...fonts.regular, fontSize: 14 },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  more: { color: colors.onSurfaceSecondary, fontFamily: fonts.medium, fontSize: 13 },
 }));

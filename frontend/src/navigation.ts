@@ -1,6 +1,3 @@
-import { Platform } from "react-native";
-
-// iOS 26+ renders true native tabs (expo-router/unstable-native-tabs).
-// Older iOS, Android and web fall back to the classic JS <Tabs>.
-export const usesNativeTabs =
-  Platform.OS === "ios" && parseInt(String(Platform.Version), 10) >= 26;
+// SewAIn ships as an installable web app, so every platform uses the same JS tab bar
+// (with the central "+" button). Kept as a flag so screens can still ask.
+export const usesNativeTabs = false;

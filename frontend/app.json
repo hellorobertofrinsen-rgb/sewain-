@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "Sewain",
+    "name": "SewAIn",
     "slug": "sewain",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "sewain",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "id.sewain.app",
@@ -18,7 +18,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#121214"
+        "backgroundColor": "#F4F5F7"
       },
       "package": "id.sewain.app"
     },
@@ -26,12 +26,12 @@
       "bundler": "metro",
       "output": "single",
       "favicon": "./assets/images/favicon.png",
-      "name": "Sewain",
-      "shortName": "Sewain",
+      "name": "SewAIn - Property Manager",
+      "shortName": "SewAIn",
       "lang": "id",
-      "themeColor": "#121214",
-      "backgroundColor": "#121214",
-      "description": "AI admin buat bisnis sewa properti."
+      "themeColor": "#F4F5F7",
+      "backgroundColor": "#F4F5F7",
+      "description": "Kelola prospek, unit, dan tenant di satu tempat."
     },
     "plugins": [
       "expo-router",
@@ -41,7 +41,7 @@
           "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#121214"
+          "backgroundColor": "#F4F5F7"
         }
       ],
       "expo-font",
