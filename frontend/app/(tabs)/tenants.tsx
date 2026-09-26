@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { FlatList, Pressable, Text as RNText, View } from "react-native";
+import { FlatList, Text as RNText, View } from "react-native";
 import { router } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usesNativeTabs } from "@/src/navigation";
 import { Icon } from "@/src/components/Icon";
 import { Sheet } from "@/src/components/Sheet";
-import { Button, Card, Chip, EmptyState, ErrorBox, Field, Input, Spinner, StatusPill } from "@/src/components/ui";
+import { Button, Card, Chip, EmptyState, ErrorBox, Field, Input, Spinner, StatusPill, PressableScale } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
 import { dayLabel, leaseLeftLabel, moneyInput, parseMoney, rupiah, todayISO } from "@/src/lib/format";
@@ -64,10 +64,10 @@ export default function TenantsScreen() {
     <View style={s.root}>
       <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
         <RNText style={s.title}>Tenant</RNText>
-        <Pressable testID="add-tenant-button" onPress={() => setAddOpen(true)} style={({ pressed }) => [s.addBtn, pressed && { opacity: 0.7 }]}>
+        <PressableScale testID="add-tenant-button" onPress={() => setAddOpen(true)} style={[s.addBtn]}>
           <Icon name="plus" size={18} color={colors.onBrandPrimary} />
           <RNText style={s.addText}>Tambah</RNText>
-        </Pressable>
+        </PressableScale>
       </View>
 
       {(belum.length ?? 0) > 0 ? (

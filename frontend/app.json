@@ -11,7 +11,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "id.sewain.app",
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "Pilih foto unit untuk ditampilkan ke calon penyewa"
+        "NSPhotoLibraryUsageDescription": "Pilih foto unit untuk ditampilkan ke calon penyewa",
+        "CADisableMinimumFrameDurationOnPhone": true
       }
     },
     "android": {

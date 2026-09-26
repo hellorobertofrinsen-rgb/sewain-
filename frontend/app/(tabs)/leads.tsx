@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { FlatList, Pressable, Text as RNText, View } from "react-native";
+import { FlatList, Text as RNText, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { usesNativeTabs } from "@/src/navigation";
 import { Icon } from "@/src/components/Icon";
-import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Spinner, StatusPill } from "@/src/components/ui";
+import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Spinner, StatusPill, PressableScale } from "@/src/components/ui";
 import { api } from "@/src/lib/api";
 import { usePlan } from "@/src/lib/plan";
 import { LEAD_STATUS, dayLabel, relTime, rupiahShort } from "@/src/lib/format";
@@ -48,10 +48,10 @@ export default function LeadsScreen() {
     <View style={s.root}>
       <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
         <RNText style={s.title}>Calon Penyewa</RNText>
-        <Pressable testID="add-lead-button" onPress={addLead} style={({ pressed }) => [s.aiBtn, pressed && { opacity: 0.7 }]}>
+        <PressableScale testID="add-lead-button" onPress={addLead} style={[s.aiBtn]}>
           <Icon name="plus" size={18} color={colors.onBrandPrimary} />
           <RNText style={s.aiBtnText}>Tambah</RNText>
-        </Pressable>
+        </PressableScale>
       </View>
       {isFree && plan ? (
         <RNText style={s.usage}>

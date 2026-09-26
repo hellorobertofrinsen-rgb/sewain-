@@ -1,15 +1,16 @@
 import React from "react";
 import { NativeTabs } from "expo-router/unstable-native-tabs";
 import { Tabs, router, usePathname } from "expo-router";
-import { Platform, Pressable, Text as RNText, useWindowDimensions, View } from "react-native";
+import { Platform, Text as RNText, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usesNativeTabs } from "@/src/navigation";
 import { Icon, IconName } from "@/src/components/Icon";
 import { LogoFull } from "@/src/components/Logo";
-import { StatusPill } from "@/src/components/ui";
+import { StatusPill, PressableScale } from "@/src/components/ui";
 import { useAuth } from "@/src/lib/auth";
 import { usePlan } from "@/src/lib/plan";
-import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { fonts, makeStyles, radius, spacing, useTheme, withAlpha } from "@/src/theme";
+import { STATE_TRANSITION } from "@/src/motion";
 
 const TABS: { name: string; label: string; icon: IconName; sf: string }[] = [
   { name: "today", label: "Hari Ini", icon: "home", sf: "house.fill" },
@@ -32,17 +33,7 @@ function Sidebar() {
 
   const item = (path: string, label: string, icon: IconName, key: string) => {
     const active = pathname === path || pathname.startsWith(path + "/");
-    return (
-      <Pressable
-        key={key}
-        testID={`nav-${key}`}
-        onPress={() => router.push(path as any)}
-        style={({ pressed }) => [s.navItem, active && s.navItemActive, pressed && { opacity: 0.7 }]}
-      >
-        <Icon name={icon} size={18} color={active ? colors.onSurface : colors.muted} />
-        <RNText style={[s.navLabel, active && s.navLabelActive]}>{label}</RNText>
-      </Pressable>
-    );
+    return <NavItem key={key} path={path} label={label} icon={icon} testID={`nav-${key}`} active={active} />;
   };
 
   const initial = (user?.name || "S").charAt(0).toUpperCase();
@@ -59,13 +50,13 @@ function Sidebar() {
       </View>
       <View style={{ flex: 1 }} />
       {plan?.plan === "free" ? (
-        <Pressable testID="sidebar-upgrade" onPress={() => showUpgrade("general")} style={({ pressed }) => [s.upgrade, pressed && { opacity: 0.8 }]}>
+        <PressableScale testID="sidebar-upgrade" onPress={() => showUpgrade("general")} style={[s.upgrade]}>
           <RNText style={s.upgradeTitle}>Paket Free</RNText>
           <RNText style={s.upgradeSub}>
             {plan.usage.units}/{plan.limits.max_units} unit · {plan.usage.active_leads}/{plan.limits.max_active_leads} calon aktif
           </RNText>
           <RNText style={s.upgradeCta}>Upgrade ke Premium →</RNText>
-        </Pressable>
+        </PressableScale>
       ) : null}
       <View style={s.userBox}>
         <View style={s.avatar}>
@@ -82,6 +73,27 @@ function Sidebar() {
         ) : null}
       </View>
     </View>
+  );
+}
+
+// Desktop sidebar row. Hover only exists for a mouse (RN Web fires onHoverIn for
+// mouse pointers only), so touch devices never get a stuck hover state.
+function NavItem({ path, label, icon, active, testID }: { path: string; label: string; icon: IconName; active: boolean; testID: string }) {
+  const { colors } = useTheme();
+  const s = useStyles();
+  const [hovered, setHovered] = React.useState(false);
+  return (
+    <PressableScale
+      testID={testID}
+      role="link"
+      onPress={() => router.push(path as any)}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
+      style={[STATE_TRANSITION, s.navItem, hovered && !active && s.navItemHover, active && s.navItemActive]}
+    >
+      <Icon name={icon} size={18} color={active ? colors.onSurface : colors.muted} />
+      <RNText style={[s.navLabel, active && s.navLabelActive]}>{label}</RNText>
+    </PressableScale>
   );
 }
 
@@ -168,6 +180,7 @@ const useStyles = makeStyles((colors) => ({
     minHeight: 44,
   },
   navItemActive: { backgroundColor: colors.surfaceTertiary },
+  navItemHover: { backgroundColor: withAlpha(colors.surfaceTertiary, 0.6) },
   navLabel: { color: colors.muted, fontFamily: fonts.medium, fontSize: 14 },
   navLabelActive: { color: colors.onSurface, fontFamily: fonts.semibold },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md, marginHorizontal: spacing.sm },

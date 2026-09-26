@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { FlatList, Pressable, Text as RNText, View } from "react-native";
+import { FlatList, Text as RNText, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { usesNativeTabs } from "@/src/navigation";
 import { Icon } from "@/src/components/Icon";
 import { Sheet } from "@/src/components/Sheet";
-import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Field, Spinner, StatusPill, SwitchRow, Textarea } from "@/src/components/ui";
+import { Button, Card, Chip, ChipRow, EmptyState, ErrorBox, Field, Spinner, StatusPill, SwitchRow, Textarea, PressableScale } from "@/src/components/ui";
 import { useToast } from "@/src/components/Toast";
 import { api } from "@/src/lib/api";
 import { MAINT_STATUS, relTime } from "@/src/lib/format";
@@ -82,10 +82,10 @@ export default function MaintenanceScreen() {
     <View style={s.root}>
       <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
         <RNText style={s.title}>Masalah</RNText>
-        <Pressable testID="report-issue-button" onPress={() => setReportOpen(true)} style={({ pressed }) => [s.addBtn, pressed && { opacity: 0.7 }]}>
+        <PressableScale testID="report-issue-button" onPress={() => setReportOpen(true)} style={[s.addBtn]}>
           <Icon name="plus" size={18} color={colors.onBrandPrimary} />
           <RNText style={s.addText}>Lapor</RNText>
-        </Pressable>
+        </PressableScale>
       </View>
 
       <ChipRow testID="maintenance-filter-row">

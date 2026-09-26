@@ -1,14 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { Linking, Pressable, Text as RNText, View } from "react-native";
+import { Linking, Text as RNText, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Sheet } from "@/src/components/Sheet";
-import { Button, StatusPill } from "@/src/components/ui";
+import { Button, StatusPill, PressableScale } from "@/src/components/ui";
 import { Icon } from "@/src/components/Icon";
 import { api, onPlanError } from "./api";
 import { useAuth } from "./auth";
 import { rupiah } from "./format";
 import { upgradeMessage } from "./messages";
+import { STATE_TRANSITION } from "@/src/motion";
 import { fonts, makeStyles, radius, spacing, useTheme, withAlpha } from "@/src/theme";
 
 // Limits, prices and the upgrade WhatsApp number all come from the backend
@@ -151,14 +152,14 @@ function UpgradeSheet({ reason, plan, email, onClose }: { reason: UpgradeReason 
             const perMonth = Math.round(p.price / p.months);
             const saving = monthly && p.months > 1 ? Math.round((1 - p.price / (monthly * p.months)) * 100) : 0;
             return (
-              <Pressable key={p.id} testID={`price-${p.id}`} onPress={() => setPicked(p.id)} style={[s.price, active && s.priceActive]}>
+              <PressableScale key={p.id} testID={`price-${p.id}`} onPress={() => setPicked(p.id)} style={[STATE_TRANSITION, s.price, active && s.priceActive]}>
                 {p.best ? <RNText style={s.best}>PALING HEMAT</RNText> : null}
                 <RNText style={s.priceLabel}>{p.label}</RNText>
                 <RNText style={s.priceValue}>{rupiah(p.price)}</RNText>
                 <RNText style={s.priceSub}>
                   {p.months > 1 ? `≈ ${rupiah(perMonth)}/bulan${saving > 0 ? ` · hemat ${saving}%` : ""}` : "per bulan"}
                 </RNText>
-              </Pressable>
+              </PressableScale>
             );
           })}
         </View>
