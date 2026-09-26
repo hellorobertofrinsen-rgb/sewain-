@@ -91,6 +91,20 @@ class User(BaseModel):
     premium_until: Optional[str] = None  # YYYY-MM-DD inclusive; None = no expiry
     trial: bool = False  # premium came from the automatic 14-day trial, not a payment
     timezone: str = 'Asia/Jakarta'  # Asia/Jakarta (WIB) | Asia/Makassar (WITA) | Asia/Jayapura (WIT)
+    language: str = 'id'  # id | en
+    # Profile (shown on invoices and testimonials)
+    phone: Optional[str] = None
+    agency: Optional[str] = None
+    domicile: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_account: Optional[str] = None
+    bank_holder: Optional[str] = None
+    office_bank_name: Optional[str] = None  # agency account, the other choice on invoices
+    office_bank_account: Optional[str] = None
+    office_bank_holder: Optional[str] = None
+    photo: Optional[str] = None  # file path, see storage.py
+    onboarding_tour_seen: bool = False
+    onboarding_dismissed: bool = False
     created_at: datetime = Field(default_factory=now_utc)
     model_config = ConfigDict(populate_by_name=True, extra='ignore')
 
@@ -136,6 +150,7 @@ class Unit(BaseDocument):
     notes: Optional[str] = None
     owner_name: Optional[str] = None   # pemilik unit (agents manage units owned by others)
     owner_phone: Optional[str] = None
+    daily_price: Optional[int] = None  # per night, for units also rented daily
     vacant_since: Optional[datetime] = None
     occupied_since: Optional[datetime] = None
 
@@ -187,6 +202,7 @@ class Viewing(BaseDocument):
     scheduled_at: datetime
     note: Optional[str] = None
     status: str = 'menunggu'  # menunggu | terjadwal | selesai | batal
+    calendar_added: bool = False  # agent added it to Google Calendar
 
 
 class Tenant(BaseDocument):
@@ -226,9 +242,24 @@ class Maintenance(BaseDocument):
     category: str = 'Lainnya'
     priority: str = 'normal'  # urgent | normal | rendah
     ai_summary: Optional[str] = None
-    status: str = 'baru'  # baru | sedang | selesai
+    status: str = 'baru'  # baru | sedang | selesai | batal
     reported_by: Optional[str] = None
     resolved_at: Optional[datetime] = None
+    scheduled_at: Optional[datetime] = None  # when the agent plans to handle it
+    calendar_added: bool = False
+
+
+class Booking(BaseDocument):
+    """A daily/nightly stay in a unit (villa, kos harian)."""
+    unit_id: str
+    guest_name: str
+    phone: Optional[str] = None
+    check_in: str  # YYYY-MM-DD
+    check_out: str  # YYYY-MM-DD (the morning they leave)
+    nights: int = 1
+    price_per_night: int = 0
+    total: int = 0
+    note: Optional[str] = None
 
 
 class Activity(BaseDocument):

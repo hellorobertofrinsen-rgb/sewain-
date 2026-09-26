@@ -187,3 +187,109 @@ def test_stats_are_private_to_the_account(account, client):
     _unit(account)
     account.ok('post', '/leads', {'name': 'Rahasia'})
     assert other.ok('get', '/stats')['prospects'] == 0
+
+
+# ------------------------------ Round 3: profile, to-do, bookings, reports ----------
+
+def test_profile_fields_and_language(account):
+    body = {'name': 'Roberto Frinsen', 'phone': '0812 1111 2222', 'agency': 'Frinsen Realty', 'domicile': 'Jakarta Utara',
+            'bank_name': 'BCA', 'bank_account': '1234567890', 'bank_holder': 'Roberto F',
+            'office_bank_name': 'Mandiri', 'office_bank_account': '9876543210', 'office_bank_holder': 'PT Frinsen',
+            'language': 'en'}
+    me = account.ok('patch', '/me', body)
+    for k, v in body.items():
+        assert me[k] == v, k
+    assert account.patch('/me', {'language': 'fr'}).status_code == 400
+    assert account.ok('get', '/me')['office_bank_account'] == '9876543210'
+
+
+def test_profile_photo(account):
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new('RGB', (40, 40), 'blue').save(buf, 'PNG')
+    r = account.c.post('/api/me/photo', headers=account.h, files={'file': ('me.png', buf.getvalue(), 'image/png')})
+    assert r.status_code == 200 and r.json()['photo']
+    assert account.c.get(f"/api/files/{r.json()['photo']}", headers=account.h).status_code == 200
+    r = account.c.delete('/api/me/photo', headers=account.h)
+    assert r.status_code == 200 and r.json()['photo'] is None
+
+
+def test_units_and_tenants_need_no_setup_order(account):
+    u = account.ok('post', '/units', {'name': 'V1', 'monthly_price': 5_000_000})  # no property yet
+    assert u['property_name'] == 'Properti utama'
+    u2 = account.ok('post', '/units', {'name': 'V2', 'property_name': 'Villa Canggu'})
+    assert u2['property_name'] == 'Villa Canggu'
+    tid = account.ok('post', '/tenants', {'name': 'Kevin', 'start_date': '2026-01-01', 'monthly_rent': 4_000_000,
+                                          'new_unit': {'name': 'B1', 'property_name': 'Villa Canggu'}})['tenant_id']
+    t = account.ok('get', f'/tenants/{tid}')
+    assert t['unit_name'] == 'B1'
+    assert len(account.ok('get', '/properties')) == 2
+
+
+def test_todo_links_schedule_calendar_cancel(account):
+    u = _unit(account, 'T1')
+    tid = account.ok('post', '/tenants', {'name': 'Dewi', 'unit_id': u['id'], 'start_date': '2026-01-01',
+                                          'monthly_rent': 1_000_000})['tenant_id']
+    by_unit = account.ok('post', '/maintenance', {'description': 'AC bocor', 'unit_id': u['id'], 'scheduled_at': '2026-10-01T10:00'})
+    assert by_unit['tenant_id'] == tid  # the unit's tenant is filled in
+    by_tenant = account.ok('post', '/maintenance', {'description': 'Parkir', 'tenant_id': tid})
+    assert by_tenant['unit_id'] == u['id']
+    account.ok('post', f"/maintenance/{by_unit['id']}/calendar")
+    row = [m for m in account.ok('get', '/maintenance') if m['id'] == by_unit['id']][0]
+    assert row['calendar_added'] and row['tenant_name'] == 'Dewi' and row['scheduled_at'].startswith('2026-10-01')
+    account.ok('post', f"/maintenance/{by_unit['id']}/cancel")
+    row = [m for m in account.ok('get', '/maintenance') if m['id'] == by_unit['id']][0]
+    assert row['status'] == 'batal' and not row['calendar_added']
+
+
+def test_viewing_calendar_flag_resets_on_reschedule(account):
+    from datetime import timedelta
+    from models import today_wib
+    u = _unit(account)
+    lid = account.ok('post', '/leads', {'name': 'Eka', 'phone': '0812'})['id']
+    when = (today_wib() + timedelta(days=2)).strftime('%Y-%m-%dT10:00:00')
+    vid = account.ok('post', '/viewings', {'lead_id': lid, 'unit_id': u['id'], 'scheduled_at': when})['id']
+    account.ok('post', f'/viewings/{vid}/calendar')
+    lead = account.ok('get', '/leads?status=aktif')[0]
+    assert lead['next_viewing']['calendar_added'] is True
+    later = (today_wib() + timedelta(days=3)).strftime('%Y-%m-%dT10:00:00')
+    account.ok('post', f'/viewings/{vid}/reschedule', {'scheduled_at': later})
+    assert account.ok('get', '/leads?status=aktif')[0]['next_viewing']['calendar_added'] is False
+
+
+def test_daily_bookings(account):
+    u = account.ok('post', '/units', {'name': 'Villa 1', 'daily_price': 1_500_000})
+    b = account.ok('post', f"/units/{u['id']}/bookings", {'guest_name': 'Anna', 'check_in': '2026-10-01', 'check_out': '2026-10-04'})
+    assert (b['nights'], b['total']) == (3, 4_500_000)
+    r = account.post(f"/units/{u['id']}/bookings", {'guest_name': 'Ben', 'check_in': '2026-10-03', 'check_out': '2026-10-05'})
+    assert r.status_code == 409
+    account.ok('post', f"/units/{u['id']}/bookings", {'guest_name': 'Ben', 'check_in': '2026-10-04', 'check_out': '2026-10-05'})
+    st = account.ok('get', '/stats?start=2026-10-02&end=2026-10-04')
+    # Nights of 2, 3 (Anna) and 4 (Ben) fall inside 2-4 Oct.
+    assert st['current']['daily_nights'] == 3 and st['current']['daily_income'] == 4_500_000
+    assert st['previous_period'] == {'start': '2026-09-29', 'end': '2026-10-01', 'days': 3}
+    assert st['previous']['daily_income'] == 1_500_000  # Anna's first night
+    account.ok('delete', f"/bookings/{b['id']}")
+    assert len(account.ok('get', f"/units/{u['id']}/bookings")) == 1
+
+
+def test_stats_portfolio_numbers_and_units_ranking(account):
+    from datetime import timedelta
+    from models import today_wib
+    busy = _unit(account, 'Busy')
+    quiet = _unit(account, 'Quiet')
+    full = _unit(account, 'Full')
+    account.ok('post', '/tenants', {'name': 'T', 'unit_id': full['id'], 'start_date': '2026-01-01', 'monthly_rent': 2_000_000})
+    past = (today_wib() - timedelta(days=0)).strftime('%Y-%m-%dT00:30:00')
+    for n in ('A', 'B'):
+        lid = account.ok('post', '/leads', {'name': n})['id']
+        account.ok('post', '/viewings', {'lead_id': lid, 'unit_id': busy['id'], 'scheduled_at': past})
+    today = today_wib().date().isoformat()
+    st = account.ok('get', f'/stats?start={today}&end={today}')
+    assert st['current']['prospects'] == 2 and st['current']['tenants'] == 1
+    assert st['current']['units'] == 3 and st['current']['monthly_income'] == 2_000_000
+    assert st['hot_units'][0]['name'] == 'Busy' and st['hot_units'][0]['viewings'] == 2
+    assert [r['name'] for r in st['least_units']][0] == 'Quiet'
+    assert all(r['name'] != 'Full' for r in st['least_units'])
+    assert account.get('/stats?start=2026-10-05&end=2026-10-01').status_code == 400

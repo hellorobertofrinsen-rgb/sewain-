@@ -13,11 +13,11 @@ from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 from auth_utils import ALGORITHM, SECRET, bearer, current_account, account_id
-from database import properties, units, leads, viewings, tenants, payments, maintenance, activities
+from database import properties, units, leads, viewings, tenants, payments, maintenance, activities, bookings
 from helpers import (PAYMENT_INTERVALS, log_activity_async, generate_payments, days_late, days_since,
                      parse_date, oid, contract_end, period_label)
 from matching import AUTO_MATCH_MIN_SCORE, guess_issue_category, match_score, rank_units
-from models import Property, Unit, Lead, Viewing, Tenant, Maintenance, now_utc, today_wib, local_tz
+from models import Booking, Property, Unit, Lead, Viewing, Tenant, Maintenance, now_utc, today_wib, local_tz
 from plans import (CLOSED_LEAD_STATUSES, ensure_can_create_lead, ensure_can_create_units,
                    require_feature, unit_query)
 
@@ -165,7 +165,8 @@ UNIT_STATUSES = ('kosong', 'terisi', 'reserved', 'maintenance')
 
 
 class UnitIn(BaseModel):
-    property_id: str
+    property_id: str | None = None
+    property_name: str | None = Field(default=None, max_length=120)  # creates the property if new
     name: str = Field(min_length=1, max_length=60)
     unit_type: str = 'Studio'
     monthly_price: int = Field(default=0, ge=0)
@@ -179,6 +180,7 @@ class UnitIn(BaseModel):
     notes: str | None = None
     owner_name: str | None = Field(default=None, max_length=80)
     owner_phone: str | None = Field(default=None, max_length=40)
+    daily_price: int | None = Field(default=None, ge=0)
 
 
 class UnitPatch(BaseModel):
@@ -196,6 +198,31 @@ class UnitPatch(BaseModel):
     notes: str | None = None
     owner_name: str | None = Field(default=None, max_length=80)
     owner_phone: str | None = Field(default=None, max_length=40)
+    daily_price: int | None = Field(default=None, ge=0)
+
+
+DEFAULT_PROPERTY = 'Properti utama'
+
+
+async def _resolve_property(aid: str, property_id: str | None, property_name: str | None) -> dict:
+    """Units don't need a property set up first: pick one by id or name, or make one."""
+    pmap = await _props_map(aid)
+    if property_id:
+        p = pmap.get(property_id)
+        if not p:
+            raise HTTPException(404, 'Properti tidak ditemukan')
+        return p
+    name = (property_name or '').strip()
+    if not name:
+        if pmap:  # the most recently added property
+            return sorted(pmap.values(), key=lambda x: x.get('created_at') or now_utc())[-1]
+        name = DEFAULT_PROPERTY
+    for p in pmap.values():
+        if p.get('name', '').strip().lower() == name.lower():
+            return p
+    prop = Property(account_id=aid, name=name, type='lainnya')
+    await properties.insert_one(prop.to_mongo())
+    return prop.to_mongo()
 
 
 async def _get_visible_unit(user: dict, uid: str) -> dict:
@@ -218,12 +245,11 @@ async def create_unit(body: UnitIn, user: dict = Depends(current_account)):
     aid = account_id(user)
     if body.status not in UNIT_STATUSES:
         raise HTTPException(400, 'Status unit tidak valid')
-    pmap = await _props_map(aid)
-    p = pmap.get(body.property_id)
-    if not p:
-        raise HTTPException(404, 'Properti tidak ditemukan')
     await ensure_can_create_units(user)
-    u = Unit(account_id=aid, **body.model_dump())
+    p = await _resolve_property(aid, body.property_id, body.property_name)
+    pmap = await _props_map(aid)
+    data = body.model_dump(exclude={'property_name'}) | {'property_id': str(p['_id'])}
+    u = Unit(account_id=aid, **data)
     u.city = p.get('city')
     u.available_date = _check_date(body.available_date, 'Tanggal available')
     if body.status == 'kosong':
@@ -368,6 +394,57 @@ async def upload_unit_photo(uid: str, file: UploadFile, user: dict = Depends(cur
     return {'path': path, 'url': f'/api/files/{path}'}
 
 
+# ============================== Daily bookings ================================
+
+class BookingIn(BaseModel):
+    guest_name: str = Field(min_length=1, max_length=80)
+    phone: str | None = Field(default=None, max_length=40)
+    check_in: str
+    check_out: str
+    price_per_night: int | None = Field(default=None, ge=0)
+    note: str | None = Field(default=None, max_length=300)
+
+
+@router.get('/units/{uid}/bookings')
+async def list_bookings(uid: str, user: dict = Depends(current_account)):
+    u = await _get_visible_unit(user, uid)
+    docs = await bookings.find({'account_id': account_id(user), 'unit_id': str(u['_id']), 'deleted_at': None})\
+        .sort('check_in', -1).to_list(None)
+    return [noid(b) for b in docs]
+
+
+@router.post('/units/{uid}/bookings')
+async def create_booking(uid: str, body: BookingIn, user: dict = Depends(current_account)):
+    aid = account_id(user)
+    u = await _get_visible_unit(user, uid)
+    cin, cout = parse_date(body.check_in), parse_date(body.check_out)
+    if not cin or not cout:
+        raise HTTPException(400, 'Tanggal check-in dan check-out harus format YYYY-MM-DD')
+    if cout <= cin:
+        raise HTTPException(400, 'Check-out harus setelah check-in')
+    clash = await bookings.find_one({'account_id': aid, 'unit_id': str(u['_id']), 'deleted_at': None,
+                                     'check_in': {'$lt': cout.isoformat()}, 'check_out': {'$gt': cin.isoformat()}})
+    if clash:
+        raise HTTPException(409, f'Tanggal bentrok dengan booking {clash["guest_name"]}')
+    nights = (cout - cin).days
+    price = body.price_per_night if body.price_per_night is not None else (u.get('daily_price') or 0)
+    b = Booking(account_id=aid, unit_id=str(u['_id']), guest_name=body.guest_name.strip(), phone=body.phone,
+                check_in=cin.isoformat(), check_out=cout.isoformat(), nights=nights, price_per_night=price,
+                total=nights * price, note=body.note)
+    await bookings.insert_one(b.to_mongo())
+    await log_activity_async(aid, 'booking_added', 'booking', f'Booking {b.guest_name} di unit {u["name"]} ({nights} malam)', b.id)
+    return noid(b.to_mongo())
+
+
+@router.delete('/bookings/{bid}')
+async def delete_booking(bid: str, user: dict = Depends(current_account)):
+    res = await bookings.update_one({'_id': oid(bid, 'Booking'), 'account_id': account_id(user), 'deleted_at': None},
+                                    {'$set': {'deleted_at': now_utc()}})
+    if not res.matched_count:
+        raise HTTPException(404, 'Booking tidak ditemukan')
+    return {'ok': True}
+
+
 @router.get('/files/{fpath:path}')
 async def get_file(fpath: str, token: str | None = None,
                    cred: HTTPAuthorizationCredentials | None = Depends(bearer)):
@@ -481,7 +558,8 @@ async def list_leads(status: str | None = None, user: dict = Depends(current_acc
         if nv:
             u = umap.get(nv.get('unit_id') or '') or {}
             d['next_viewing'] = {'id': str(nv['_id']), 'at': _iso(next_v[d['id']]), 'unit_name': u.get('name', '-'),
-                                 'location': unit_location(u, pmap) if u else ''}
+                                 'location': unit_location(u, pmap) if u else '',
+                                 'calendar_added': bool(nv.get('calendar_added'))}
         out.append(d)
     return out
 
@@ -753,6 +831,14 @@ async def create_viewing(body: ViewingIn, user: dict = Depends(current_account))
     return noid(v.to_mongo())
 
 
+@router.post('/viewings/{vid}/calendar')
+async def viewing_calendar(vid: str, user: dict = Depends(current_account)):
+    """The agent added this viewing to Google Calendar."""
+    v = await _get_viewing(account_id(user), vid)
+    await viewings.update_one({'_id': v['_id']}, {'$set': {'calendar_added': True}})
+    return {'ok': True}
+
+
 async def _get_viewing(aid: str, vid: str) -> dict:
     v = await viewings.find_one({'_id': oid(vid, 'Viewing'), 'account_id': aid, 'deleted_at': None})
     if not v:
@@ -771,7 +857,7 @@ async def confirm_viewing(vid: str, user: dict = Depends(current_account)):
 async def reschedule_viewing(vid: str, body: dict, user: dict = Depends(current_account)):
     v = await _get_viewing(account_id(user), vid)
     when = _parse_when(str(body.get('scheduled_at') or ''))
-    await viewings.update_one({'_id': v['_id']}, {'$set': {'scheduled_at': when, 'status': 'menunggu'}})
+    await viewings.update_one({'_id': v['_id']}, {'$set': {'scheduled_at': when, 'status': 'menunggu', 'calendar_added': False}})
     return {'ok': True}
 
 
@@ -812,9 +898,17 @@ async def complete_viewing(vid: str, body: dict | None = None, user: dict = Depe
 
 # ============================== Tenants & Payments ============================
 
+class NewUnitIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    monthly_price: int = Field(default=0, ge=0)
+    unit_type: str = 'Studio'
+    property_name: str | None = None
+
+
 class TenantIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
-    unit_id: str
+    unit_id: str | None = None
+    new_unit: NewUnitIn | None = None  # add the unit and its tenant in one go
     phone: str | None = Field(default=None, max_length=40)
     start_date: str
     contract_months: int = Field(default=12, ge=1, le=60)
@@ -893,6 +987,16 @@ async def get_tenant(tid: str, user: dict = Depends(current_account)):
 @router.post('/tenants')
 async def create_tenant(body: TenantIn, user: dict = Depends(current_account)):
     aid = account_id(user)
+    if body.new_unit:
+        await ensure_can_create_units(user)
+        p = await _resolve_property(aid, None, body.new_unit.property_name)
+        nu = Unit(account_id=aid, property_id=str(p['_id']), name=body.new_unit.name.strip(),
+                  unit_type=body.new_unit.unit_type, monthly_price=body.new_unit.monthly_price or body.monthly_rent,
+                  city=p.get('city'), status='kosong')
+        await units.insert_one(nu.to_mongo())
+        body.unit_id = nu.id
+    if not body.unit_id:
+        raise HTTPException(400, 'Pilih unit atau isi unit baru')
     u = await _get_visible_unit(user, body.unit_id)
     if u.get('status') == 'terisi':
         raise HTTPException(400, f'Unit {u["name"]} sudah terisi')
@@ -1017,9 +1121,31 @@ async def payment_reminded(pid: str, user: dict = Depends(current_account)):
 # ============================== Issues (maintenance) ===========================
 
 class MaintIn(BaseModel):
-    description: str = Field(min_length=3, max_length=2000)
+    description: str = Field(min_length=3, max_length=300)
     unit_id: str | None = None
+    tenant_id: str | None = None
+    scheduled_at: str | None = None  # YYYY-MM-DDTHH:MM
     urgent: bool = False
+
+
+class MaintPatch(BaseModel):
+    description: str | None = Field(default=None, min_length=3, max_length=300)
+    scheduled_at: str | None = None
+
+
+async def _todo_links(aid: str, unit_id: str | None, tenant_id: str | None) -> tuple[str | None, str | None]:
+    """Pick a tenant and its unit follows; pick a unit and its current tenant follows."""
+    if tenant_id:
+        t = await tenants.find_one({'_id': oid(tenant_id, 'Tenant'), 'account_id': aid, 'deleted_at': None})
+        if not t:
+            raise HTTPException(404, 'Tenant tidak ditemukan')
+        return t.get('unit_id'), tenant_id
+    if unit_id:
+        if unit_id not in await _units_map(aid):
+            raise HTTPException(404, 'Unit tidak ditemukan')
+        t = await tenants.find_one({'account_id': aid, 'unit_id': unit_id, 'status': 'aktif', 'deleted_at': None})
+        return unit_id, (str(t['_id']) if t else None)
+    return None, None
 
 
 @router.get('/maintenance')
@@ -1032,23 +1158,32 @@ async def list_maintenance(status: str | None = None, user: dict = Depends(curre
         q['status'] = status
     docs = await maintenance.find(q).sort('created_at', -1).to_list(None)
     umap = await _units_map(aid)
-    prio_rank = {'urgent': 0, 'normal': 1, 'rendah': 2}
+    pmap = await _props_map(aid)
+    tmap = {str(t['_id']): t for t in await tenants.find({'account_id': aid}).to_list(None)}
     out = []
     for m in docs:
         d = noid(m)
-        d['unit_name'] = (umap.get(m.get('unit_id') or '') or {}).get('name')
+        u = umap.get(m.get('unit_id') or '')
+        t = tmap.get(m.get('tenant_id') or '')
+        d['unit_name'] = u.get('name') if u else None
+        d['location'] = unit_location(u, pmap) if u else ''
+        d['tenant_name'] = t.get('name') if t else None
+        d['tenant_phone'] = t.get('phone') if t else None
+        d['scheduled_at'] = _iso(_aware(m.get('scheduled_at')))
         out.append(d)
-    out.sort(key=lambda x: (x['status'] == 'selesai', prio_rank.get(x.get('priority', 'normal'), 1)))
+    far = '9999'
+    # Open first, soonest scheduled first; then done/cancelled.
+    out.sort(key=lambda x: (x['status'] in ('selesai', 'batal'), x.get('scheduled_at') or far))
     return out
 
 
 @router.post('/maintenance')
 async def create_maintenance(body: MaintIn, user: dict = Depends(current_account)):
     aid = account_id(user)
-    if body.unit_id and body.unit_id not in await _units_map(aid):
-        raise HTTPException(404, 'Unit tidak ditemukan')
-    m = Maintenance(account_id=aid, description=body.description.strip(), unit_id=body.unit_id,
+    unit_id, tenant_id = await _todo_links(aid, body.unit_id, body.tenant_id)
+    m = Maintenance(account_id=aid, description=body.description.strip(), unit_id=unit_id, tenant_id=tenant_id,
                     category=guess_issue_category(body.description),
+                    scheduled_at=_parse_when(body.scheduled_at) if body.scheduled_at else None,
                     priority='urgent' if body.urgent else 'normal', status='baru')
     await maintenance.insert_one(m.to_mongo())
     await log_activity_async(aid, 'maintenance_reported', 'maintenance',
@@ -1061,6 +1196,35 @@ async def _get_issue(aid: str, mid: str) -> dict:
     if not m:
         raise HTTPException(404, 'Masalah tidak ditemukan')
     return m
+
+
+@router.patch('/maintenance/{mid}')
+async def update_maintenance(mid: str, body: MaintPatch, user: dict = Depends(current_account)):
+    m = await _get_issue(account_id(user), mid)
+    setq: dict = {}
+    if body.description is not None:
+        setq['description'] = body.description.strip()
+    if body.scheduled_at is not None:
+        setq['scheduled_at'] = _parse_when(body.scheduled_at) if body.scheduled_at else None
+        setq['calendar_added'] = False  # a new time needs a new calendar entry
+    if setq:
+        await maintenance.update_one({'_id': m['_id']}, {'$set': setq})
+    return {'ok': True}
+
+
+@router.post('/maintenance/{mid}/calendar')
+async def maintenance_calendar(mid: str, user: dict = Depends(current_account)):
+    """The agent added this to-do to Google Calendar (the app opens the pre-filled event)."""
+    m = await _get_issue(account_id(user), mid)
+    await maintenance.update_one({'_id': m['_id']}, {'$set': {'calendar_added': True}})
+    return {'ok': True}
+
+
+@router.post('/maintenance/{mid}/cancel')
+async def cancel_maintenance(mid: str, user: dict = Depends(current_account)):
+    m = await _get_issue(account_id(user), mid)
+    await maintenance.update_one({'_id': m['_id']}, {'$set': {'status': 'batal', 'calendar_added': False}})
+    return {'ok': True}
 
 
 @router.post('/maintenance/{mid}/start')
@@ -1144,6 +1308,7 @@ async def today(user: dict = Depends(current_account)):
             'type': 'viewing_result' if past else 'viewing', 'id': str(v['_id']), 'viewing_id': str(v['_id']),
             'lead_id': v.get('lead_id'), 'unit_id': v.get('unit_id'), 'phone': l.get('phone'),
             'name': l.get('name', '-'), 'unit_name': u.get('name', '-'), 'location': unit_location(u, pmap),
+            'calendar_added': bool(v.get('calendar_added')),
             'scheduled_at': _iso(when), 'status': v.get('status'),
             'priority': 1,
         })
@@ -1180,12 +1345,17 @@ async def today(user: dict = Depends(current_account)):
         })
 
     mdocs = await maintenance.find({'account_id': aid, 'deleted_at': None, 'status': {'$in': ['baru', 'sedang']}}).to_list(None)
+    todos_today = 0
     for m in mdocs:
         urgent = m.get('priority') == 'urgent'
+        when = _aware(m.get('scheduled_at'))
+        if when and when.astimezone(local_tz()).date() <= today_d:
+            todos_today += 1
         items.append({
             'type': 'maintenance', 'id': str(m['_id']), 'maintenance_id': str(m['_id']),
             'description': m.get('ai_summary') or m.get('description'),
             'category': m.get('category'), 'status': m.get('status'),
+            'scheduled_at': _iso(when),
             'unit_name': (umap.get(m.get('unit_id') or '') or {}).get('name'),
             'urgent': urgent, 'priority': 0 if urgent else 3,
         })
@@ -1207,6 +1377,8 @@ async def today(user: dict = Depends(current_account)):
         'leases': sum(1 for i in items if i['type'] == 'lease'),
         'issues': sum(1 for i in items if i['type'] == 'maintenance'),
         'active_leads': len(ldocs),
+        'todos': len(mdocs),
+        'todos_today': todos_today,
         'urgent': sum(1 for i in items if i['type'] == 'maintenance' and i.get('urgent')),
         'total': len(items),
     }

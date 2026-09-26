@@ -6,11 +6,11 @@ import secrets
 from datetime import timedelta
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 
 from auth_utils import create_token, current_account, hash_password, verify_password
-from database import users, delete_account_data
+from database import files, users, delete_account_data
 from models import TIMEZONES, now_utc
 from plans import DEMO_RETENTION_DAYS, effective_plan, plan_summary, trial_until
 from ratelimit import client_ip, hit
@@ -27,6 +27,7 @@ class RegisterIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     timezone: str | None = None
+    language: str | None = None
 
 
 class LoginIn(BaseModel):
@@ -34,19 +35,28 @@ class LoginIn(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+PROFILE_FIELDS = ('phone', 'agency', 'domicile', 'bank_name', 'bank_account', 'bank_holder',
+                  'office_bank_name', 'office_bank_account', 'office_bank_holder')
+
+
 def public_user(u: dict) -> dict:
     return {'id': str(u['_id']), 'name': u.get('name', ''), 'email': u.get('email', ''),
             'is_demo': bool(u.get('is_demo')), 'plan': effective_plan(u),
-            'timezone': u.get('timezone') or 'Asia/Jakarta'}
+            'timezone': u.get('timezone') or 'Asia/Jakarta', 'language': u.get('language') or 'id',
+            'photo': u.get('photo'),
+            'onboarding_tour_seen': bool(u.get('onboarding_tour_seen')),
+            'onboarding_dismissed': bool(u.get('onboarding_dismissed')),
+            **{k: u.get(k) for k in PROFILE_FIELDS}}
 
 
 async def _create_account(name: str, email: str, password: str | None, is_demo: bool,
-                          timezone_name: str | None = None) -> dict:
+                          timezone_name: str | None = None, language: str | None = None) -> dict:
     doc = {
         '_id': ObjectId(), 'name': name, 'email': email,
         'password_hash': hash_password(password or secrets.token_hex(16)),
         'is_demo': is_demo, 'plan': 'free', 'created_at': now_utc(),
         'timezone': timezone_name if timezone_name in TIMEZONES else 'Asia/Jakarta',
+        'language': language if language in ('id', 'en') else 'id',
     }
     if not is_demo:
         doc |= {'plan': 'premium', 'premium_until': trial_until(), 'trial': True}
@@ -74,7 +84,8 @@ async def register(body: RegisterIn, request: Request):
     email = body.email.lower().strip()
     if await users.find_one({'email': email}):
         raise HTTPException(409, 'Email sudah terdaftar. Coba masuk saja.')
-    doc = await _create_account(body.name.strip(), email, body.password, is_demo=False, timezone_name=body.timezone)
+    doc = await _create_account(body.name.strip(), email, body.password, is_demo=False, timezone_name=body.timezone,
+                                language=body.language)
     return {'token': create_token(str(doc['_id'])), 'user': public_user(doc)}
 
 
@@ -107,6 +118,18 @@ async def me(user: dict = Depends(current_account)):
 class ProfileIn(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     timezone: str | None = None
+    language: str | None = None
+    phone: str | None = Field(default=None, max_length=40)
+    agency: str | None = Field(default=None, max_length=120)
+    domicile: str | None = Field(default=None, max_length=120)
+    bank_name: str | None = Field(default=None, max_length=60)
+    bank_account: str | None = Field(default=None, max_length=40)
+    bank_holder: str | None = Field(default=None, max_length=80)
+    office_bank_name: str | None = Field(default=None, max_length=60)
+    office_bank_account: str | None = Field(default=None, max_length=40)
+    office_bank_holder: str | None = Field(default=None, max_length=80)
+    onboarding_tour_seen: bool | None = None
+    onboarding_dismissed: bool | None = None
 
 
 @router.patch('/me')
@@ -118,9 +141,42 @@ async def update_me(body: ProfileIn, user: dict = Depends(current_account)):
         if body.timezone not in TIMEZONES:
             raise HTTPException(400, 'Zona waktu harus WIB, WITA, atau WIT')
         setq['timezone'] = body.timezone
+    if body.language is not None:
+        if body.language not in ('id', 'en'):
+            raise HTTPException(400, 'Bahasa harus id atau en')
+        setq['language'] = body.language
+    for k in PROFILE_FIELDS:
+        v = getattr(body, k)
+        if v is not None:
+            setq[k] = v.strip() or None
+    for k in ('onboarding_tour_seen', 'onboarding_dismissed'):
+        if getattr(body, k) is not None:
+            setq[k] = getattr(body, k)
     if setq:
         await users.update_one({'_id': user['_id']}, {'$set': setq})
     return public_user(user | setq)
+
+
+@router.post('/me/photo')
+async def upload_my_photo(file: UploadFile, user: dict = Depends(current_account)):
+    from storage import save_photo
+    try:
+        path = await save_photo(str(user['_id']), file)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    old = user.get('photo')
+    await users.update_one({'_id': user['_id']}, {'$set': {'photo': path}})
+    if old:
+        await files.delete_one({'path': old, 'owner_id': str(user['_id'])})
+    return public_user(user | {'photo': path})
+
+
+@router.delete('/me/photo')
+async def delete_my_photo(user: dict = Depends(current_account)):
+    if user.get('photo'):
+        await files.delete_one({'path': user['photo'], 'owner_id': str(user['_id'])})
+    await users.update_one({'_id': user['_id']}, {'$set': {'photo': None}})
+    return public_user(user | {'photo': None})
 
 
 @router.get('/plan')

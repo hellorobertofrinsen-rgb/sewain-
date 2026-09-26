@@ -24,12 +24,13 @@ tenants = db['tenants']
 payments = db['payments']
 maintenance = db['maintenance']
 activities = db['activities']
+bookings = db['bookings']
 files = db['files']  # unit photos (bytes live in the document, see storage.py)
 
 # Every collection holding per-account data (keyed by account_id). The last four are
 # leftovers from the removed AI features; kept here so account cleanup removes them too.
 ACCOUNT_COLLECTIONS = ['properties', 'units', 'leads', 'viewings', 'tenants', 'payments',
-                       'maintenance', 'activities',
+                       'maintenance', 'activities', 'bookings',
                        'conversations', 'ai_insights', 'summaries', 'tanya_messages']
 
 
@@ -43,6 +44,7 @@ async def ensure_indexes():
     await payments.create_index([('account_id', 1), ('status', 1)])
     await payments.create_index([('account_id', 1), ('tenant_id', 1)])
     await activities.create_index([('account_id', 1), ('created_at', -1)])
+    await bookings.create_index([('account_id', 1), ('unit_id', 1), ('check_in', 1)])
     await files.create_index('path', unique=True)
     await files.create_index('owner_id')
 
